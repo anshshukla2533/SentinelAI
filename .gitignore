@@ -6,5 +6,10 @@ venv/
 .venv/
 backend/venv/
 
+node_modules/
+dist/
+build/
+.next/
+
 __pycache__/
 *.py[cod]
