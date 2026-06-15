@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import inspect, text
@@ -229,6 +229,50 @@ def update_incident_status(incident_id: int, status_update: IncidentStatusUpdate
             "id": incident.id,
             "status": incident.status,
             "resolved_at": incident.resolved_at,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/incidents/{incident_id}/context")
+def get_incident_context(incident_id: int, window_minutes: int = 30):
+    bounded_window = min(max(window_minutes, 1), 1440)
+    db = SessionLocal()
+
+    try:
+        incident = get_incident_or_404(db, incident_id)
+        window_start = incident.created_at - timedelta(minutes=bounded_window)
+        window_end = incident.resolved_at or datetime.now(timezone.utc)
+
+        metrics = (
+            db.query(Metric)
+            .filter(
+                Metric.service_name == incident.service_name,
+                Metric.created_at >= window_start,
+                Metric.created_at <= window_end,
+            )
+            .order_by(Metric.created_at.asc())
+            .all()
+        )
+        logs = (
+            db.query(LogEntry)
+            .filter(
+                LogEntry.service_name == incident.service_name,
+                LogEntry.created_at >= window_start,
+                LogEntry.created_at <= window_end,
+            )
+            .order_by(LogEntry.created_at.desc())
+            .all()
+        )
+
+        return {
+            "incident": incident,
+            "window_start": window_start,
+            "window_end": window_end,
+            "metrics_count": len(metrics),
+            "logs_count": len(logs),
+            "metrics": metrics,
+            "logs": logs,
         }
     finally:
         db.close()
