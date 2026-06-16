@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+}
+
+.ai-grid {
+  background:
+    linear-gradient(rgba(34, 211, 238, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(217, 70, 239, 0.08) 1px, transparent 1px),
+    linear-gradient(120deg, #08111f 0%, #101532 48%, #0f1f2a 100%);
+  background-size: 56px 56px, 56px 56px, 100% 100%;
+}
+
+.ai-grid::after {
+  animation: scan 7s linear infinite;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.18), transparent);
+  content: "";
+  height: 28%;
+  inset: 0;
+  position: absolute;
+  transform: translateY(-100%);
+}
+
+.signal {
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 999px;
+  filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.28));
+  position: absolute;
+}
+
+.signal::before {
+  animation: pulse-dot 3.8s ease-in-out infinite;
+  background: #22d3ee;
+  border-radius: 999px;
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.9);
+  content: "";
+  height: 10px;
+  position: absolute;
+  right: 16%;
+  top: 18%;
+  width: 10px;
+}
+
+.signal-one {
+  height: 520px;
+  right: -140px;
+  top: 130px;
+  width: 520px;
+}
+
+.signal-two {
+  border-color: rgba(217, 70, 239, 0.22);
+  bottom: -180px;
+  height: 460px;
+  left: -130px;
+  width: 460px;
+}
+
+.signal-two::before {
+  animation-delay: 1.2s;
+  background: #e879f9;
+  box-shadow: 0 0 24px rgba(232, 121, 249, 0.85);
+  left: 23%;
+  right: auto;
+  top: 24%;
+}
+
+.signal-three {
+  border-color: rgba(52, 211, 153, 0.18);
+  height: 280px;
+  right: 18%;
+  top: 58%;
+  width: 280px;
+}
+
+.signal-three::before {
+  animation-delay: 2s;
+  background: #34d399;
+  box-shadow: 0 0 24px rgba(52, 211, 153, 0.85);
+}
+
+.download-grid {
+  background:
+    linear-gradient(rgba(14, 165, 233, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 184, 166, 0.08) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.install-scan {
+  animation: install-scan 2.8s ease-in-out infinite;
+  box-shadow: 0 0 28px rgba(34, 211, 238, 0.9);
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(360%);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes install-scan {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateX(-100%);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateX(100%);
+  }
+}
