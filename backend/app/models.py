@@ -60,3 +60,23 @@ class LogEntry(Base):
     message = Column(String, nullable=False)
     source = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AnalysisReport(Base):
+    __tablename__ = "analysis_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    service_name = Column(String, nullable=False, index=True)
+    hostname = Column(String, nullable=True, index=True)
+    risk_level = Column(String, nullable=False, index=True)
+    risk_score = Column(Integer, nullable=False)
+    summary = Column(String, nullable=False)
+    recommendation = Column(String, nullable=False)
+    predicted_failure = Column(String, nullable=True)
+    likely_failure_at = Column(DateTime(timezone=True), nullable=True)
+    time_to_failure = Column(String, nullable=True)
+    prevention_steps = Column(String, nullable=True)
+    notification_target = Column(String, nullable=True)
+    notification_sent = Column(Integer, nullable=False, default=0)
+    notification_error = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
