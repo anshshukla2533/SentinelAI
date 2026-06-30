@@ -8,44 +8,50 @@ html {
 
 body {
   min-width: 320px;
+  background:
+    radial-gradient(circle at top, rgba(34, 211, 238, 0.08), transparent 38%),
+    linear-gradient(180deg, #060816 0%, #070914 55%, #050712 100%);
+  color: #e5e7eb;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .ai-grid {
   background:
-    linear-gradient(rgba(34, 211, 238, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(217, 70, 239, 0.08) 1px, transparent 1px),
-    linear-gradient(120deg, #08111f 0%, #101532 48%, #0f1f2a 100%);
+    linear-gradient(rgba(34, 211, 238, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+    linear-gradient(120deg, rgba(8, 15, 30, 0.95) 0%, rgba(10, 15, 28, 0.92) 48%, rgba(8, 10, 20, 0.98) 100%);
   background-size: 56px 56px, 56px 56px, 100% 100%;
 }
 
 .ai-grid::after {
-  animation: scan 7s linear infinite;
-  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.18), transparent);
+  animation: scan 10s linear infinite;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.08), transparent);
   content: "";
-  height: 28%;
+  height: 18%;
   inset: 0;
   position: absolute;
   transform: translateY(-100%);
 }
 
 .signal {
-  border: 1px solid rgba(34, 211, 238, 0.24);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 999px;
-  filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.28));
+  filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.14));
   position: absolute;
 }
 
 .signal::before {
   animation: pulse-dot 3.8s ease-in-out infinite;
-  background: #22d3ee;
+  background: #7dd3fc;
   border-radius: 999px;
-  box-shadow: 0 0 24px rgba(34, 211, 238, 0.9);
+  box-shadow: 0 0 18px rgba(125, 211, 252, 0.7);
   content: "";
-  height: 10px;
+  height: 8px;
   position: absolute;
   right: 16%;
   top: 18%;
-  width: 10px;
+  width: 8px;
 }
 
 .signal-one {
@@ -56,7 +62,7 @@ body {
 }
 
 .signal-two {
-  border-color: rgba(217, 70, 239, 0.22);
+  border-color: rgba(244, 114, 182, 0.12);
   bottom: -180px;
   height: 460px;
   left: -130px;
@@ -65,15 +71,15 @@ body {
 
 .signal-two::before {
   animation-delay: 1.2s;
-  background: #e879f9;
-  box-shadow: 0 0 24px rgba(232, 121, 249, 0.85);
+  background: #f9a8d4;
+  box-shadow: 0 0 18px rgba(249, 168, 212, 0.65);
   left: 23%;
   right: auto;
   top: 24%;
 }
 
 .signal-three {
-  border-color: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.1);
   height: 280px;
   right: 18%;
   top: 58%;
@@ -82,20 +88,20 @@ body {
 
 .signal-three::before {
   animation-delay: 2s;
-  background: #34d399;
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.85);
+  background: #86efac;
+  box-shadow: 0 0 18px rgba(134, 239, 172, 0.65);
 }
 
 .download-grid {
   background:
-    linear-gradient(rgba(14, 165, 233, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 184, 166, 0.08) 1px, transparent 1px);
+    linear-gradient(rgba(14, 165, 233, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 184, 166, 0.05) 1px, transparent 1px);
   background-size: 42px 42px;
 }
 
 .install-scan {
-  animation: install-scan 2.8s ease-in-out infinite;
-  box-shadow: 0 0 28px rgba(34, 211, 238, 0.9);
+  animation: install-scan 3.6s ease-in-out infinite;
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.45);
 }
 
 @keyframes scan {

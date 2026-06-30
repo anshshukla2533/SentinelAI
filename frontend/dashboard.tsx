@@ -146,7 +146,7 @@ function DashboardHeader() {
           </div>
           <div>
             <div className="text-lg font-semibold leading-none">SentinelAI</div>
-            <div className="text-xs text-slate-400">{user?.email ?? 'Private dashboard'}</div>
+            <div className="text-xs text-slate-400">{user?.email ?? 'Workspace'}</div>
           </div>
         </Link>
 
@@ -241,11 +241,11 @@ function OverviewPage() {
               <Sparkles className="h-3.5 w-3.5" />
               Overview
             </div>
-            <h1 className="mt-5 text-4xl font-black tracking-tight">Your monitored machines</h1>
+            <h1 className="mt-5 text-4xl font-semibold tracking-tight">Your machines</h1>
             <p className="mt-4 text-slate-300">
               {services.length > 0
-                ? 'This view refreshes every 12 seconds with the latest status and metric snapshots.'
-                : 'No machines yet. Install the agent to get started, and your first machine will appear automatically.'}
+                ? 'The dashboard refreshes every 12 seconds so you can keep an eye on the machines that matter.'
+                : 'No machines yet. Install the agent to get started, and your first machine will appear here.'}
             </p>
           </div>
 
@@ -306,9 +306,9 @@ function AddMachinePage() {
           <Terminal className="h-3.5 w-3.5" />
           Add a machine
         </div>
-        <h1 className="mt-5 text-4xl font-black tracking-tight">Install the agent with your token</h1>
-        <p className="mt-4 text-slate-300">
-          The command below already includes your personal registration token, so the first telemetry write creates your machine automatically.
+            <h1 className="mt-5 text-4xl font-semibold tracking-tight">Install the agent with your token</h1>
+            <p className="mt-4 text-slate-300">
+          The command below already includes your registration token, so the first telemetry write creates your machine automatically.
         </p>
 
         <div className="mt-8 space-y-4">
@@ -415,11 +415,11 @@ function MachineDetailPage() {
       <section className="rounded-3xl border border-white/10 bg-white/[0.05] p-8 shadow-2xl shadow-black/20">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-medium text-cyan-100">
               <Gauge className="h-3.5 w-3.5" />
               Machine detail
             </div>
-            <h1 className="mt-5 text-4xl font-black tracking-tight">{service.name}</h1>
+            <h1 className="mt-5 text-4xl font-semibold tracking-tight">{service.name}</h1>
             <p className="mt-3 text-slate-300">{service.hostname ?? 'No hostname recorded yet'}</p>
           </div>
 
@@ -672,11 +672,11 @@ function IncidentsPage() {
       </section>
 
       <section className="space-y-6">
-        <SectionHeader
-          title="Incident detail"
-          subtitle="Open one incident to see the telemetry window around the trigger and update its status."
-          icon={<AlertCircle className="h-4 w-4" />}
-        />
+          <SectionHeader
+            title="Incident detail"
+            subtitle="Open one incident to see the telemetry window around the trigger and update its status."
+            icon={<AlertCircle className="h-4 w-4" />}
+          />
 
         {selectedIncidentId ? (
           <CardPanel title={context?.incident.title ?? selectedIncident?.title ?? 'Incident'} icon={<Bell className="h-4 w-4" />}>
@@ -780,7 +780,7 @@ function ReportsPage() {
     <div className="space-y-6">
       <SectionHeader
         title="Reports"
-        subtitle="AI risk reports produced by the existing analysis engine."
+        subtitle="Risk reports produced by the analysis engine."
         icon={<AlertCircle className="h-4 w-4" />}
       />
 

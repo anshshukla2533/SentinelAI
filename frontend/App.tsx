@@ -113,97 +113,97 @@ function LandingPage() {
 
           <div className="relative z-10 mx-auto flex min-h-[calc(92vh-6rem)] max-w-6xl flex-col justify-center px-6 py-16">
             <div className="max-w-4xl">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-medium text-cyan-100 shadow-lg shadow-cyan-950/30">
-                <Sparkles className="h-4 w-4 text-fuchsia-300" />
-                AI-based predictive infrastructure protection
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/8 px-4 py-2 text-sm font-medium text-cyan-100">
+                <Sparkles className="h-4 w-4 text-cyan-200" />
+                Monitoring that stays quiet until you need it
               </div>
 
-              <h1 className="text-5xl font-black leading-tight tracking-normal md:text-7xl">
-                Download SentinelAI and predict server failures before they happen.
+              <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+                See your machines, incidents, and reports in one calm workspace.
               </h1>
 
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300 md:text-xl">
-                Install a lightweight Python agent, stream telemetry, and let SentinelAI detect dangerous patterns
-                before downtime reaches your users.
+              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 md:text-lg">
+                Install the agent once, then keep an eye on the machines that matter most. SentinelAI collects the
+                signals for you and surfaces the ones worth your attention.
               </p>
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 {status === 'authenticated' ? (
                   <Link
                     to="/dashboard"
-                    className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-6 py-4 font-bold text-[#06111f] shadow-xl shadow-cyan-500/25 transition hover:bg-cyan-300"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 font-semibold text-[#06111f] transition hover:bg-cyan-300"
                   >
                     <Server className="h-5 w-5" />
-                    Open Dashboard
+                    Go to dashboard
                   </Link>
                 ) : (
                   <Link
                     to="/signup"
-                    className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-6 py-4 font-bold text-[#06111f] shadow-xl shadow-cyan-500/25 transition hover:bg-cyan-300"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 font-semibold text-[#06111f] transition hover:bg-cyan-300"
                   >
                     <Sparkles className="h-5 w-5" />
-                    Create Account
+                    Create account
                   </Link>
                 )}
                 <a
                   href="mailto:hello@sentinel-ai.com"
-                  className="inline-flex h-13 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-6 py-4 font-bold text-white backdrop-blur transition hover:bg-white/15"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 font-semibold text-white transition hover:bg-white/[0.08]"
                 >
                   <Mail className="h-5 w-5" />
-                  Talk to us
+                  Contact us
                 </a>
               </div>
             </div>
 
-            <div className="mt-14 grid gap-4 md:grid-cols-3">
-              <HeroMetric label="Prediction window" value="24/7" tone="cyan" />
-              <HeroMetric label="Agent footprint" value="Light" tone="emerald" />
-              <HeroMetric label="Alert mode" value="Email" tone="fuchsia" />
+            <div className="mt-12 grid gap-4 md:grid-cols-3">
+              <HeroMetric label="What it tracks" value="CPU, memory, logs" tone="cyan" />
+              <HeroMetric label="How it feels" value="Lightweight" tone="emerald" />
+              <HeroMetric label="How you hear" value="Alerts" tone="fuchsia" />
             </div>
           </div>
         </section>
 
-        <section className="border-y border-white/10 bg-[#0d1224]">
+        <section className="border-y border-white/10 bg-white/[0.02]">
           <div className="mx-auto grid max-w-6xl gap-4 px-6 py-10 md:grid-cols-3">
             <Feature
               icon={<Radar />}
-              title="AI Trend Analysis"
-              text="Reads telemetry patterns to identify risky changes before they become outages."
+              title="What it watches"
+              text="CPU, memory, disk, logs, and service health in one place."
               color="cyan"
             />
             <Feature
               icon={<Server />}
-              title="Machine Scope"
-              text="Your machines stay isolated behind your personal registration token and login."
+              title="How it stays private"
+              text="Every machine belongs to one account and one token."
               color="fuchsia"
             />
             <Feature
               icon={<Zap />}
-              title="Early Alerts"
-              text="Sends predictive warnings so teams can fix the issue before users feel it."
+              title="What you get"
+              text="A clear view of what is healthy, what needs attention, and what to do next."
               color="amber"
             />
           </div>
         </section>
 
-        <section id="download" className="relative overflow-hidden bg-[#f7fbff] text-[#07111f]">
+        <section id="download" className="relative overflow-hidden bg-[#f4f7fb] text-[#07111f]">
           <div className="download-grid absolute inset-0 opacity-70" />
           <div className="relative mx-auto grid max-w-6xl gap-8 px-6 py-16 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
             <div>
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#07111f] px-3 py-1 text-sm font-semibold text-cyan-200">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#07111f] px-3 py-1 text-sm font-medium text-cyan-200">
                 <Terminal className="h-4 w-4" />
-                One-command install
+                Agent install
               </div>
-              <h2 className="text-4xl font-black tracking-normal">Download the SentinelAI agent</h2>
-              <p className="mt-4 text-lg leading-8 text-slate-600">
-                Copy the command and run it on the machine you want to protect. The agent starts sending telemetry to
-                your backend so SentinelAI can begin prediction.
+              <h2 className="text-3xl font-semibold tracking-tight">Install the agent on one machine first</h2>
+              <p className="mt-4 text-base leading-8 text-slate-600">
+                Copy the command and run it wherever you want visibility. The machine appears in your dashboard as
+                soon as it posts its first telemetry packet.
               </p>
 
               <div className="mt-7 space-y-4">
-                <Step text="Install on a server, laptop, or VM" />
-                <Step text="Collect telemetry continuously" />
-                <Step text="Generate predictive risk warnings" />
+                <Step text="Copy the install command" />
+                <Step text="Run it on a server, VM, or laptop" />
+                <Step text="See the machine appear in your dashboard" />
               </div>
             </div>
 
@@ -215,7 +215,7 @@ function LandingPage() {
       <footer className="border-t border-white/10 bg-[#070914]">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-7 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
           <span className="font-semibold text-white">SentinelAI</span>
-          <span>Predictive infrastructure intelligence for computers and servers.</span>
+          <span>Simple monitoring for machines that need a steady eye on them.</span>
         </div>
       </footer>
     </div>
