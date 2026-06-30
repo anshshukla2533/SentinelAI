@@ -432,6 +432,40 @@ def get_report_or_404(db: Session, report_id: int, user_id: int):
     return report
 
 
+def serialize_metric(metric: Metric | None):
+    if metric is None:
+        return None
+
+    return {
+        "id": metric.id,
+        "service_name": metric.service_name,
+        "cpu": metric.cpu,
+        "memory": metric.memory,
+        "disk": metric.disk,
+        "network_sent": metric.network_sent,
+        "network_recv": metric.network_recv,
+        "load_average": metric.load_average,
+        "uptime": metric.uptime,
+        "hostname": metric.hostname,
+        "operating_system": metric.operating_system,
+        "created_at": metric.created_at,
+    }
+
+
+def serialize_service_summary(service: Service, latest_metric: Metric | None, open_incidents_count: int):
+    return {
+        "id": service.id,
+        "name": service.name,
+        "hostname": service.hostname,
+        "process_name": service.process_name,
+        "status": service.status,
+        "created_at": service.created_at,
+        "last_seen_at": service.last_seen_at,
+        "latest_metric": serialize_metric(latest_metric),
+        "open_incidents_count": open_incidents_count,
+    }
+
+
 @app.get("/")
 def root():
     return {"message": "SentinelAI Backend Running"}
@@ -569,12 +603,39 @@ def create_metric(metric: MetricCreate, agent_user: User = Depends(get_agent_use
 def get_services(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        return (
+        services = (
             db.query(Service)
             .filter(Service.user_id == current_user.id)
             .order_by(Service.last_seen_at.desc(), Service.created_at.desc())
             .all()
         )
+
+        summaries = []
+        for service in services:
+            latest_metric_query = db.query(Metric).filter(
+                Metric.user_id == current_user.id,
+                Metric.service_name == service.name,
+            )
+            if service.hostname is None:
+                latest_metric_query = latest_metric_query.filter(Metric.hostname.is_(None))
+            else:
+                latest_metric_query = latest_metric_query.filter(Metric.hostname == service.hostname)
+
+            latest_metric = latest_metric_query.order_by(Metric.created_at.desc()).first()
+            open_incidents_count = (
+                db.query(Incident)
+                .filter(
+                    Incident.user_id == current_user.id,
+                    Incident.service_id == service.id,
+                    Incident.status.in_(["open", "investigating"]),
+                )
+                .count()
+            )
+            summaries.append(
+                serialize_service_summary(service, latest_metric, open_incidents_count)
+            )
+
+        return summaries
     finally:
         db.close()
 

@@ -14,6 +14,7 @@ import {
 import AgentInstall from './AgentInstall';
 import { API_BASE_URL } from './api';
 import { AuthProvider, useAuth } from './auth';
+import DashboardApp from './dashboard';
 
 function App() {
   return (
@@ -24,10 +25,10 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route
-            path="/dashboard"
+            path="/dashboard/*"
             element={
               <ProtectedRoute>
-                <DashboardPage />
+                <DashboardApp />
               </ProtectedRoute>
             }
           />

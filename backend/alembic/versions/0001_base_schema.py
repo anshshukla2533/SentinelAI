@@ -22,9 +22,9 @@ def upgrade():
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("hostname", sa.String(), nullable=True),
         sa.Column("process_name", sa.String(), nullable=True),
-        sa.Column("status", sa.String(), nullable=False, server_default="unknown"),
-        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("status", sa.String(), nullable=False, server_default=sa.text("'unknown'")),
+        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name", name="uq_services_name"),
     )
@@ -45,7 +45,7 @@ def upgrade():
         sa.Column("uptime", sa.Float(), nullable=True),
         sa.Column("hostname", sa.String(), nullable=True),
         sa.Column("operating_system", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_metrics_id"), "metrics", ["id"], unique=False)
@@ -57,8 +57,8 @@ def upgrade():
         sa.Column("service_name", sa.String(), nullable=False),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("severity", sa.String(), nullable=False),
-        sa.Column("status", sa.String(), nullable=False, server_default="open"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("status", sa.String(), nullable=False, server_default=sa.text("'open'")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["service_id"], ["services.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -76,7 +76,7 @@ def upgrade():
         sa.Column("level", sa.String(), nullable=False),
         sa.Column("message", sa.String(), nullable=False),
         sa.Column("source", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_logs_id"), "logs", ["id"], unique=False)
@@ -99,9 +99,9 @@ def upgrade():
         sa.Column("time_to_failure", sa.String(), nullable=True),
         sa.Column("prevention_steps", sa.String(), nullable=True),
         sa.Column("notification_target", sa.String(), nullable=True),
-        sa.Column("notification_sent", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("notification_sent", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("notification_error", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_analysis_reports_id"), "analysis_reports", ["id"], unique=False)
