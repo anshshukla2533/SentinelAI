@@ -466,6 +466,41 @@ def serialize_service_summary(service: Service, latest_metric: Metric | None, op
     }
 
 
+def serialize_incident(incident: Incident):
+    return {
+        "id": incident.id,
+        "user_id": incident.user_id,
+        "service_id": incident.service_id,
+        "service_name": incident.service_name,
+        "title": incident.title,
+        "severity": incident.severity,
+        "status": incident.status,
+        "created_at": incident.created_at,
+        "resolved_at": incident.resolved_at,
+    }
+
+
+def serialize_report(report: AnalysisReport):
+    return {
+        "id": report.id,
+        "user_id": report.user_id,
+        "service_name": report.service_name,
+        "hostname": report.hostname,
+        "risk_level": report.risk_level,
+        "risk_score": report.risk_score,
+        "summary": report.summary,
+        "recommendation": report.recommendation,
+        "predicted_failure": report.predicted_failure,
+        "likely_failure_at": report.likely_failure_at,
+        "time_to_failure": report.time_to_failure,
+        "prevention_steps": report.prevention_steps,
+        "notification_target": report.notification_target,
+        "notification_sent": report.notification_sent,
+        "notification_error": report.notification_error,
+        "created_at": report.created_at,
+    }
+
+
 @app.get("/")
 def root():
     return {"message": "SentinelAI Backend Running"}
@@ -678,15 +713,22 @@ def report_service_health(
 
 
 @app.get("/incidents")
-def get_incidents(current_user: User = Depends(get_current_user)):
+def get_incidents(
+    current_user: User = Depends(get_current_user),
+    status: str | None = None,
+    severity: str | None = None,
+):
     db = SessionLocal()
     try:
-        return (
-            db.query(Incident)
-            .filter(Incident.user_id == current_user.id)
-            .order_by(Incident.created_at.desc())
-            .all()
-        )
+        query = db.query(Incident).filter(Incident.user_id == current_user.id)
+
+        if status:
+            query = query.filter(Incident.status == status)
+
+        if severity:
+            query = query.filter(Incident.severity == severity)
+
+        return query.order_by(Incident.created_at.desc()).all()
     finally:
         db.close()
 
@@ -855,9 +897,7 @@ def get_reports(
 
         bounded_limit = min(max(limit, 1), 500)
 
-        return (
-            query.order_by(AnalysisReport.created_at.desc()).limit(bounded_limit).all()
-        )
+        return query.order_by(AnalysisReport.created_at.desc()).limit(bounded_limit).all()
     finally:
         db.close()
 
