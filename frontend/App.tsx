@@ -1,9 +1,8 @@
-import type React from 'react';
+import React, { useState } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
-  BrainCircuit,
   CheckCircle2,
-  Download,
   Mail,
   Radar,
   Server,
@@ -13,28 +12,94 @@ import {
   Zap,
 } from 'lucide-react';
 import AgentInstall from './AgentInstall';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'https://api.sentinel-ai.com';
+import { API_BASE_URL } from './api';
+import { AuthProvider, useAuth } from './auth';
 
 function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { status } = useAuth();
+
+  if (status === 'loading') {
+    return <FullScreenLoader text="Checking your session..." />;
+  }
+
+  if (status !== 'authenticated') {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function LandingPage() {
+  const { user, status, logout } = useAuth();
+
   return (
     <div className="min-h-screen bg-[#070914] text-white">
       <header className="fixed inset-x-0 top-0 z-30 border-b border-white/10 bg-[#070914]/80 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-400 text-[#07111f] shadow-lg shadow-cyan-500/25">
               <Shield className="h-6 w-6" />
             </div>
             <span className="text-xl font-semibold">SentinelAI</span>
-          </div>
+          </Link>
 
-          <a
-            href="#download"
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-[#07111f] transition hover:bg-cyan-100"
-          >
-            <Download className="h-4 w-4" />
-            Download
-          </a>
+          <div className="flex items-center gap-3">
+            {status === 'authenticated' ? (
+              <>
+                <Link
+                  to="/dashboard"
+                  className="inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="inline-flex h-10 items-center rounded-lg bg-white px-4 text-sm font-semibold text-[#07111f] transition hover:bg-cyan-100"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Log in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="inline-flex h-10 items-center rounded-lg bg-white px-4 text-sm font-semibold text-[#07111f] transition hover:bg-cyan-100"
+                >
+                  Sign up
+                </Link>
+              </>
+            )}
+          </div>
         </nav>
       </header>
 
@@ -62,13 +127,23 @@ function App() {
               </p>
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <a
-                  href="#download"
-                  className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-6 py-4 font-bold text-[#06111f] shadow-xl shadow-cyan-500/25 transition hover:bg-cyan-300"
-                >
-                  <Download className="h-5 w-5" />
-                  Download Agent
-                </a>
+                {status === 'authenticated' ? (
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-6 py-4 font-bold text-[#06111f] shadow-xl shadow-cyan-500/25 transition hover:bg-cyan-300"
+                  >
+                    <Server className="h-5 w-5" />
+                    Open Dashboard
+                  </Link>
+                ) : (
+                  <Link
+                    to="/signup"
+                    className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-6 py-4 font-bold text-[#06111f] shadow-xl shadow-cyan-500/25 transition hover:bg-cyan-300"
+                  >
+                    <Sparkles className="h-5 w-5" />
+                    Create Account
+                  </Link>
+                )}
                 <a
                   href="mailto:hello@sentinel-ai.com"
                   className="inline-flex h-13 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-6 py-4 font-bold text-white backdrop-blur transition hover:bg-white/15"
@@ -90,15 +165,15 @@ function App() {
         <section className="border-y border-white/10 bg-[#0d1224]">
           <div className="mx-auto grid max-w-6xl gap-4 px-6 py-10 md:grid-cols-3">
             <Feature
-              icon={<BrainCircuit />}
+              icon={<Radar />}
               title="AI Trend Analysis"
               text="Reads telemetry patterns to identify risky changes before they become outages."
               color="cyan"
             />
             <Feature
-              icon={<Radar />}
-              title="Failure Signals"
-              text="Tracks CPU, memory, disk, network, logs, and service health from your machines."
+              icon={<Server />}
+              title="Machine Scope"
+              text="Your machines stay isolated behind your personal registration token and login."
               color="fuchsia"
             />
             <Feature
@@ -142,6 +217,289 @@ function App() {
           <span>Predictive infrastructure intelligence for computers and servers.</span>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function LoginPage() {
+  const navigate = useNavigate();
+  const { login, status } = useAuth();
+
+  if (status === 'authenticated') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return (
+    <AuthPageShell
+      eyebrow="Welcome back"
+      title="Log in to SentinelAI"
+      subtitle="Use your account to view your machines, incidents, and reports."
+      footerText={
+        <>
+          New here?{' '}
+          <Link to="/signup" className="text-cyan-300 transition hover:text-cyan-200">
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      <AuthForm
+        submitLabel="Log in"
+        onSubmit={async (email, password) => {
+          await login(email, password);
+          navigate('/dashboard');
+        }}
+      />
+    </AuthPageShell>
+  );
+}
+
+function SignupPage() {
+  const navigate = useNavigate();
+  const { signup, status } = useAuth();
+
+  if (status === 'authenticated') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return (
+    <AuthPageShell
+      eyebrow="Get started"
+      title="Create your SentinelAI account"
+      subtitle="Your account gets a personal registration token for the agent and a private dashboard."
+      footerText={
+        <>
+          Already have an account?{' '}
+          <Link to="/login" className="text-cyan-300 transition hover:text-cyan-200">
+            Log in
+          </Link>
+        </>
+      }
+    >
+      <AuthForm
+        submitLabel="Create account"
+        onSubmit={async (email, password) => {
+          await signup(email, password);
+          navigate('/dashboard');
+        }}
+      />
+    </AuthPageShell>
+  );
+}
+
+function DashboardPage() {
+  const { user, logout } = useAuth();
+
+  return (
+    <div className="min-h-screen bg-[#070914] text-white">
+      <header className="border-b border-white/10 bg-[#070914]/90 backdrop-blur-xl">
+        <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-400 text-[#07111f] shadow-lg shadow-cyan-500/25">
+              <Shield className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold leading-none">SentinelAI</div>
+              <div className="text-xs text-slate-400">Private dashboard</div>
+            </div>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="inline-flex h-10 items-center rounded-lg bg-white px-4 text-sm font-semibold text-[#07111f] transition hover:bg-cyan-100"
+          >
+            Sign out
+          </button>
+        </nav>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-10">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="rounded-3xl border border-white/10 bg-white/[0.05] p-8 shadow-2xl shadow-black/20">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+              <Sparkles className="h-3.5 w-3.5" />
+              Your account
+            </div>
+            <h1 className="mt-5 text-4xl font-black tracking-tight">Welcome back, {user?.email}</h1>
+            <p className="mt-4 max-w-2xl text-slate-300">
+              This is the private area for your machines. Your registration token is ready for the agent install
+              command, and it stays tied to this account.
+            </p>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+              <MetricPill label="Machines" value="0+" />
+              <MetricPill label="Incidents" value="Private" />
+              <MetricPill label="Reports" value="Live" />
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-cyan-300/20 bg-[#07111f] p-8 shadow-2xl shadow-cyan-950/20">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-cyan-400/15 p-3 text-cyan-200">
+                <Terminal className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="text-lg font-semibold">Agent install command</div>
+                <div className="text-sm text-slate-400">Uses your personal registration token.</div>
+              </div>
+            </div>
+
+            {user ? (
+              <div className="mt-6">
+                <AgentInstall apiBaseUrl={API_BASE_URL} registrationToken={user.registration_token} />
+              </div>
+            ) : (
+              <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-slate-300">
+                Loading your registration token...
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function AuthPageShell({
+  eyebrow,
+  title,
+  subtitle,
+  footerText,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footerText: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-[#070914] text-white">
+      <div className="ai-grid absolute inset-0 opacity-70" />
+      <div className="relative mx-auto flex min-h-screen max-w-6xl items-center px-6 py-12">
+        <div className="grid w-full gap-10 lg:grid-cols-[1fr_0.9fr] lg:items-center">
+          <section className="space-y-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-medium text-cyan-100 shadow-lg shadow-cyan-950/30">
+              <Sparkles className="h-4 w-4 text-fuchsia-300" />
+              {eyebrow}
+            </div>
+            <h1 className="text-5xl font-black leading-tight tracking-normal md:text-6xl">{title}</h1>
+            <p className="max-w-2xl text-lg leading-8 text-slate-300">{subtitle}</p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                <ArrowRight className="h-4 w-4 rotate-180" />
+                Back home
+              </Link>
+              <Link
+                to="/dashboard"
+                className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-3 text-sm font-semibold text-[#07111f] transition hover:bg-cyan-300"
+              >
+                <Server className="h-4 w-4" />
+                Dashboard
+              </Link>
+            </div>
+          </section>
+
+          <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-8">
+            <div className="install-scan absolute inset-x-0 top-0 h-px bg-cyan-300" />
+            {children}
+            <p className="mt-6 text-sm text-slate-400">{footerText}</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthForm({
+  submitLabel,
+  onSubmit,
+}: {
+  submitLabel: string;
+  onSubmit: (email: string, password: string) => Promise<void>;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+          await onSubmit(email, password);
+        } catch (formError) {
+          setError(formError instanceof Error ? formError.message : 'Something went wrong');
+        } finally {
+          setLoading(false);
+        }
+      }}
+    >
+      <div>
+        <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-200">
+          Email
+        </label>
+        <input
+          id="email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-[#07111f] px-4 py-3 text-white outline-none ring-0 transition placeholder:text-slate-500 focus:border-cyan-300/40"
+          placeholder="you@example.com"
+          required
+        />
+      </div>
+
+      <div>
+        <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-200">
+          Password
+        </label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-[#07111f] px-4 py-3 text-white outline-none ring-0 transition placeholder:text-slate-500 focus:border-cyan-300/40"
+          placeholder="At least 8 characters"
+          required
+        />
+      </div>
+
+      {error ? (
+        <div className="rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+          {error}
+        </div>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 font-bold text-[#06111f] shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {loading ? 'Please wait...' : submitLabel}
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </form>
+  );
+}
+
+function FullScreenLoader({ text }: { text: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#070914] text-white">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-6 py-5 text-sm text-slate-300 shadow-2xl shadow-black/20">
+        {text}
+      </div>
     </div>
   );
 }
@@ -195,6 +553,15 @@ function Step({ text }: { text: string }) {
       <CheckCircle2 className="h-5 w-5 flex-none text-teal-600" />
       <span className="font-medium">{text}</span>
       <ArrowRight className="ml-auto h-4 w-4 text-slate-400" />
+    </div>
+  );
+}
+
+function MetricPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="text-sm text-slate-400">{label}</div>
+      <div className="mt-1 text-xl font-black text-white">{value}</div>
     </div>
   );
 }

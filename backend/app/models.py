@@ -4,10 +4,21 @@ from sqlalchemy.sql import func
 from .database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    registration_token = Column(String, nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class Metric(Base):
     __tablename__ = "metrics"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     service_name = Column(String, nullable=False)
     cpu = Column(Float, nullable=False)
     memory = Column(Float, nullable=False)
@@ -29,7 +40,8 @@ class Service(Base):
     __tablename__ = "services"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
     hostname = Column(String, nullable=True, index=True)
     process_name = Column(String, nullable=True)
     status = Column(String, nullable=False, default="unknown")
@@ -41,6 +53,7 @@ class Incident(Base):
     __tablename__ = "incidents"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     service_id = Column(Integer, ForeignKey("services.id"), nullable=True, index=True)
     service_name = Column(String, nullable=False, index=True)
     title = Column(String, nullable=False)
@@ -54,6 +67,7 @@ class LogEntry(Base):
     __tablename__ = "logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     service_name = Column(String, nullable=False, index=True)
     hostname = Column(String, nullable=True, index=True)
     level = Column(String, nullable=False, index=True)
@@ -66,6 +80,7 @@ class AnalysisReport(Base):
     __tablename__ = "analysis_reports"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     service_name = Column(String, nullable=False, index=True)
     hostname = Column(String, nullable=True, index=True)
     risk_level = Column(String, nullable=False, index=True)

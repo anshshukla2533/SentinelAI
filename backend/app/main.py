@@ -1,63 +1,44 @@
 import os
-import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from .database import engine, SessionLocal
-from .models import AnalysisReport, Base, Incident, LogEntry, Metric, Service
-from .schemas import AnalysisRequest, IncidentStatusUpdate, LogEntryCreate, MetricCreate, ServiceHealthCreate
+from .auth import (
+    clear_auth_cookie,
+    create_access_token,
+    create_registration_token,
+    get_agent_user,
+    get_current_user,
+    hash_password,
+    serialize_user,
+    set_auth_cookie,
+    verify_password,
+)
+from .database import Base, SessionLocal, engine
+from .migrations import upgrade_database
+from .models import AnalysisReport, Incident, LogEntry, Metric, Service, User
+from .schemas import (
+    AnalysisRequest,
+    AuthResponse,
+    IncidentStatusUpdate,
+    LogEntryCreate,
+    MetricCreate,
+    ServiceHealthCreate,
+    UserCreate,
+    UserLogin,
+    UserRead,
+)
 
-Base.metadata.create_all(bind=engine)
-
-
-def ensure_metric_columns():
-    """Add newly introduced metric columns for the current pre-Alembic stage."""
-    expected_columns = {
-        "disk": "FLOAT",
-        "network_sent": "FLOAT",
-        "network_recv": "FLOAT",
-        "load_average": "FLOAT",
-        "uptime": "FLOAT",
-        "hostname": "VARCHAR",
-        "operating_system": "VARCHAR",
-    }
-    existing_columns = {column["name"] for column in inspect(engine).get_columns("metrics")}
-
-    with engine.begin() as connection:
-        for column_name, column_type in expected_columns.items():
-            if column_name not in existing_columns:
-                connection.execute(text(f"ALTER TABLE metrics ADD COLUMN {column_name} {column_type}"))
-
-
-ensure_metric_columns()
-
-
-def ensure_analysis_report_columns():
-    """Add predictive report columns for the current pre-Alembic stage."""
-    expected_columns = {
-        "predicted_failure": "VARCHAR",
-        "likely_failure_at": "DATETIME",
-        "time_to_failure": "VARCHAR",
-        "prevention_steps": "VARCHAR",
-        "notification_error": "VARCHAR",
-    }
-    existing_columns = {column["name"] for column in inspect(engine).get_columns("analysis_reports")}
-
-    with engine.begin() as connection:
-        for column_name, column_type in expected_columns.items():
-            if column_name not in existing_columns:
-                connection.execute(text(f"ALTER TABLE analysis_reports ADD COLUMN {column_name} {column_type}"))
-
-
-ensure_analysis_report_columns()
+try:
+    upgrade_database()
+except ModuleNotFoundError:
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SentinelAI")
 app.add_middleware(
@@ -82,21 +63,6 @@ DOWNLOADABLE_AGENT_FILES = {
 }
 
 
-def require_agent_auth(authorization: str | None = Header(default=None)):
-    expected_token = os.getenv("SENTINEL_AGENT_TOKEN")
-
-    if not expected_token:
-        return
-
-    scheme, _, provided_token = (authorization or "").partition(" ")
-
-    if scheme.lower() != "bearer" or not secrets.compare_digest(provided_token, expected_token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing agent token",
-        )
-
-
 def calculate_service_status(health: ServiceHealthCreate):
     if not health.running:
         return "critical"
@@ -108,42 +74,6 @@ def calculate_service_status(health: ServiceHealthCreate):
         return "warning"
 
     return "healthy"
-
-
-def create_incident_if_needed(db: Session, service: Service, status: str):
-    if status == "healthy":
-        return None
-
-    existing_incident = (
-        db.query(Incident)
-        .filter(
-            Incident.service_name == service.name,
-            Incident.status.in_(["open", "investigating"]),
-        )
-        .first()
-    )
-
-    if existing_incident:
-        return existing_incident
-
-    incident = Incident(
-        service_id=service.id,
-        service_name=service.name,
-        title=f"{service.name} is {status}",
-        severity=status,
-        status="open",
-    )
-    db.add(incident)
-    return incident
-
-
-def get_incident_or_404(db: Session, incident_id: int):
-    incident = db.query(Incident).filter(Incident.id == incident_id).first()
-
-    if incident is None:
-        raise HTTPException(status_code=404, detail="Incident not found")
-
-    return incident
 
 
 def average(values):
@@ -165,7 +95,8 @@ def calculate_risk_level(score: int):
 
 def metric_rate_per_hour(metrics, field_name):
     valid_metrics = [
-        metric for metric in metrics
+        metric
+        for metric in metrics
         if getattr(metric, field_name) is not None and metric.created_at is not None
     ]
 
@@ -179,7 +110,19 @@ def metric_rate_per_hour(metrics, field_name):
     if elapsed_seconds <= 0:
         return None
 
-    return (getattr(latest_metric, field_name) - getattr(first_metric, field_name)) / (elapsed_seconds / 3600)
+    return (getattr(latest_metric, field_name) - getattr(first_metric, field_name)) / (
+        elapsed_seconds / 3600
+    )
+
+
+def format_duration(hours):
+    if hours < 1:
+        return f"{max(1, round(hours * 60))} minutes"
+
+    if hours < 48:
+        return f"{round(hours, 1)} hours"
+
+    return f"{round(hours / 24, 1)} days"
 
 
 def forecast_threshold_crossing(latest_metric, metrics, field_name, threshold, label):
@@ -219,16 +162,6 @@ def forecast_threshold_crossing(latest_metric, metrics, field_name, threshold, l
         "likely_failure_at": likely_failure_at,
         "time_to_failure": format_duration(hours_until_threshold),
     }
-
-
-def format_duration(hours):
-    if hours < 1:
-        return f"{max(1, round(hours * 60))} minutes"
-
-    if hours < 48:
-        return f"{round(hours, 1)} hours"
-
-    return f"{round(hours / 24, 1)} days"
 
 
 def build_prevention_steps(risk_level, predicted_failure):
@@ -322,7 +255,9 @@ def build_analysis_report(service_name, hostname, metrics, logs, open_incidents)
     if risk_level == "critical":
         recommendation = "Escalate now, inspect the service host, and review recent error logs."
     elif risk_level == "warning":
-        recommendation = "Watch closely, review recent logs, and prepare mitigation if resource usage keeps rising."
+        recommendation = (
+            "Watch closely, review recent logs, and prepare mitigation if resource usage keeps rising."
+        )
     else:
         recommendation = "No immediate action required; continue monitoring."
 
@@ -358,15 +293,17 @@ def send_report_email(report: AnalysisReport):
         return "SMTP is not configured"
 
     subject = f"SentinelAI {report.risk_level.upper()} risk: {report.service_name}"
-    body = "\n".join([
-        report.summary,
-        "",
-        f"Predicted failure: {report.predicted_failure or 'No specific failure predicted'}",
-        f"Likely failure time: {report.likely_failure_at or 'Unknown'}",
-        f"Time to failure: {report.time_to_failure or 'Unknown'}",
-        f"Recommended action: {report.recommendation}",
-        f"Prevention steps: {report.prevention_steps}",
-    ])
+    body = "\n".join(
+        [
+            report.summary,
+            "",
+            f"Predicted failure: {report.predicted_failure or 'No specific failure predicted'}",
+            f"Likely failure time: {report.likely_failure_at or 'Unknown'}",
+            f"Time to failure: {report.time_to_failure or 'Unknown'}",
+            f"Recommended action: {report.recommendation}",
+            f"Prevention steps: {report.prevention_steps}",
+        ]
+    )
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -389,6 +326,112 @@ def send_report_email(report: AnalysisReport):
     return None
 
 
+def get_service_by_identity(
+    db: Session,
+    user_id: int,
+    service_name: str,
+    hostname: str | None,
+):
+    query = db.query(Service).filter(Service.user_id == user_id, Service.name == service_name)
+    if hostname is None:
+        query = query.filter(Service.hostname.is_(None))
+    else:
+        query = query.filter(Service.hostname == hostname)
+    return query.first()
+
+
+def touch_service(service: Service, hostname: str | None, process_name: str | None = None):
+    if hostname is not None:
+        service.hostname = hostname
+    if process_name is not None:
+        service.process_name = process_name
+    service.last_seen_at = datetime.now(timezone.utc)
+
+
+def upsert_service_for_write(
+    db: Session,
+    user: User,
+    service_name: str,
+    hostname: str | None,
+    status: str | None = None,
+    process_name: str | None = None,
+):
+    service = get_service_by_identity(db, user.id, service_name, hostname)
+    if service is None:
+        service = Service(
+            user_id=user.id,
+            name=service_name,
+            hostname=hostname,
+            process_name=process_name,
+            status=status or "unknown",
+        )
+        db.add(service)
+    else:
+        if status is not None:
+            service.status = status
+        if process_name is not None:
+            service.process_name = process_name
+        if hostname is not None:
+            service.hostname = hostname
+    touch_service(service, hostname, process_name)
+    return service
+
+
+def create_incident_if_needed(db: Session, service: Service, status: str):
+    if status == "healthy":
+        return None
+
+    existing_incident = (
+        db.query(Incident)
+        .filter(
+            Incident.user_id == service.user_id,
+            Incident.service_id == service.id,
+            Incident.status.in_(["open", "investigating"]),
+        )
+        .first()
+    )
+
+    if existing_incident:
+        return existing_incident
+
+    incident = Incident(
+        user_id=service.user_id,
+        service_id=service.id,
+        service_name=service.name,
+        title=f"{service.name} is {status}",
+        severity=status,
+        status="open",
+    )
+    db.add(incident)
+    return incident
+
+
+def get_incident_or_404(db: Session, incident_id: int, user_id: int):
+    incident = (
+        db.query(Incident)
+        .filter(Incident.id == incident_id, Incident.user_id == user_id)
+        .first()
+    )
+
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    return incident
+
+
+def get_report_or_404(db: Session, report_id: int, user_id: int):
+    report = (
+        db.query(AnalysisReport)
+        .filter(AnalysisReport.id == report_id, AnalysisReport.user_id == user_id)
+        .first()
+    )
+
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    return report
+
+
 @app.get("/")
 def root():
     return {"message": "SentinelAI Backend Running"}
@@ -403,38 +446,76 @@ def health_check():
     }
 
 
-@app.get("/install-agent.sh")
-def download_installer():
-    installer_path = PROJECT_ROOT / "scripts" / "install-agent.sh"
+@app.post("/auth/signup", response_model=AuthResponse)
+def signup(payload: UserCreate, response: Response):
+    db = SessionLocal()
+    try:
+        email = payload.email.strip().lower()
+        existing_user = db.query(User).filter(User.email == email).first()
+        if existing_user is not None:
+            raise HTTPException(status_code=409, detail="Email is already registered")
 
-    if not installer_path.exists():
-        raise HTTPException(status_code=404, detail="Installer not found")
+        user = User(
+            email=email,
+            hashed_password=hash_password(payload.password),
+            registration_token=create_registration_token(),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-    return FileResponse(
-        installer_path,
-        media_type="text/x-shellscript",
-        filename="install-agent.sh",
-    )
+        access_token = create_access_token(user)
+        set_auth_cookie(response, access_token)
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": serialize_user(user),
+        }
+    finally:
+        db.close()
 
 
-@app.get("/downloads/agent/{filename}")
-def download_agent_file(filename: str):
-    file_path = DOWNLOADABLE_AGENT_FILES.get(filename)
+@app.post("/auth/login", response_model=AuthResponse)
+def login(payload: UserLogin, response: Response):
+    db = SessionLocal()
+    try:
+        email = payload.email.strip().lower()
+        user = db.query(User).filter(User.email == email).first()
+        if user is None or not verify_password(payload.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if file_path is None or not file_path.exists():
-        raise HTTPException(status_code=404, detail="Agent file not found")
+        access_token = create_access_token(user)
+        set_auth_cookie(response, access_token)
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": serialize_user(user),
+        }
+    finally:
+        db.close()
 
-    media_type = "text/x-python" if filename.endswith(".py") else "text/plain"
-    return FileResponse(file_path, media_type=media_type, filename=filename)
+
+@app.post("/auth/logout")
+def logout(response: Response):
+    clear_auth_cookie(response)
+    return {"message": "Logged out"}
+
+
+@app.get("/me", response_model=UserRead)
+def get_me(current_user: User = Depends(get_current_user)):
+    return serialize_user(current_user)
 
 
 @app.get("/metrics")
-def get_metrics(service_name: str | None = None, hostname: str | None = None, limit: int = 100):
-
+def get_metrics(
+    current_user: User = Depends(get_current_user),
+    service_name: str | None = None,
+    hostname: str | None = None,
+    limit: int = 100,
+):
     db = SessionLocal()
-
     try:
-        query = db.query(Metric)
+        query = db.query(Metric).filter(Metric.user_id == current_user.id)
 
         if service_name:
             query = query.filter(Metric.service_name == service_name)
@@ -445,115 +526,125 @@ def get_metrics(service_name: str | None = None, hostname: str | None = None, li
         bounded_limit = min(max(limit, 1), 500)
 
         return (
-            query
-            .order_by(Metric.created_at.desc())
-            .limit(bounded_limit)
+            query.order_by(Metric.created_at.desc()).limit(bounded_limit).all()
+        )
+    finally:
+        db.close()
+
+
+@app.post("/metrics")
+def create_metric(metric: MetricCreate, agent_user: User = Depends(get_agent_user)):
+    db: Session = SessionLocal()
+    try:
+        new_metric = Metric(
+            user_id=agent_user.id,
+            service_name=metric.service_name,
+            cpu=metric.cpu,
+            memory=metric.memory,
+            disk=metric.disk,
+            network_sent=metric.network_sent,
+            network_recv=metric.network_recv,
+            load_average=metric.load_average,
+            uptime=metric.uptime,
+            hostname=metric.hostname,
+            operating_system=metric.operating_system,
+        )
+
+        db.add(new_metric)
+        upsert_service_for_write(
+            db,
+            agent_user,
+            metric.service_name,
+            metric.hostname,
+        )
+        db.commit()
+        db.refresh(new_metric)
+
+        return {"message": "Metric stored successfully", "id": new_metric.id}
+    finally:
+        db.close()
+
+
+@app.get("/services")
+def get_services(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        return (
+            db.query(Service)
+            .filter(Service.user_id == current_user.id)
+            .order_by(Service.last_seen_at.desc(), Service.created_at.desc())
             .all()
         )
     finally:
         db.close()
 
 
-@app.post("/metrics", dependencies=[Depends(require_agent_auth)])
-def create_metric(metric: MetricCreate):
-
+@app.post("/services/health")
+def report_service_health(
+    health: ServiceHealthCreate,
+    agent_user: User = Depends(get_agent_user),
+):
     db: Session = SessionLocal()
+    try:
+        status_value = calculate_service_status(health)
+        service = upsert_service_for_write(
+            db,
+            agent_user,
+            health.service_name,
+            health.hostname,
+            status=status_value,
+            process_name=health.process_name,
+        )
 
-    new_metric = Metric(
-        service_name=metric.service_name,
-        cpu=metric.cpu,
-        memory=metric.memory,
-        disk=metric.disk,
-        network_sent=metric.network_sent,
-        network_recv=metric.network_recv,
-        load_average=metric.load_average,
-        uptime=metric.uptime,
-        hostname=metric.hostname,
-        operating_system=metric.operating_system,
-    )
+        db.flush()
+        incident = create_incident_if_needed(db, service, status_value)
+        db.commit()
+        db.refresh(service)
 
-    db.add(new_metric)
-    db.commit()
-    db.refresh(new_metric)
+        response = {
+            "message": "Service health stored successfully",
+            "service_id": service.id,
+            "status": service.status,
+        }
 
-    db.close()
+        if incident:
+            db.refresh(incident)
+            response["incident_id"] = incident.id
 
-    return {
-        "message": "Metric stored successfully",
-        "id": new_metric.id
-    }
-
-
-@app.get("/services")
-def get_services():
-    db = SessionLocal()
-
-    services = db.query(Service).all()
-
-    db.close()
-
-    return services
-
-
-@app.post("/services/health", dependencies=[Depends(require_agent_auth)])
-def report_service_health(health: ServiceHealthCreate):
-    db: Session = SessionLocal()
-
-    status = calculate_service_status(health)
-    service = db.query(Service).filter(Service.name == health.service_name).first()
-
-    if service is None:
-        service = Service(name=health.service_name)
-        db.add(service)
-
-    service.hostname = health.hostname
-    service.process_name = health.process_name
-    service.status = status
-
-    db.flush()
-    incident = create_incident_if_needed(db, service, status)
-
-    db.commit()
-    db.refresh(service)
-
-    response = {
-        "message": "Service health stored successfully",
-        "service_id": service.id,
-        "status": service.status,
-    }
-
-    if incident:
-        db.refresh(incident)
-        response["incident_id"] = incident.id
-
-    db.close()
-
-    return response
+        return response
+    finally:
+        db.close()
 
 
 @app.get("/incidents")
-def get_incidents():
+def get_incidents(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
-
-    incidents = db.query(Incident).all()
-
-    db.close()
-
-    return incidents
+    try:
+        return (
+            db.query(Incident)
+            .filter(Incident.user_id == current_user.id)
+            .order_by(Incident.created_at.desc())
+            .all()
+        )
+    finally:
+        db.close()
 
 
 @app.get("/incidents/{incident_id}")
-def get_incident(incident_id: int):
+def get_incident(incident_id: int, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
-
     try:
-        return get_incident_or_404(db, incident_id)
+        return get_incident_or_404(db, incident_id, current_user.id)
     finally:
         db.close()
 
 
 @app.patch("/incidents/{incident_id}/status")
-def update_incident_status(incident_id: int, status_update: IncidentStatusUpdate):
+def update_incident_status(
+    incident_id: int,
+    status_update: IncidentStatusUpdate,
+    current_user: User = Depends(get_current_user),
+):
     if status_update.status not in INCIDENT_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -561,9 +652,8 @@ def update_incident_status(incident_id: int, status_update: IncidentStatusUpdate
         )
 
     db: Session = SessionLocal()
-
     try:
-        incident = get_incident_or_404(db, incident_id)
+        incident = get_incident_or_404(db, incident_id, current_user.id)
         incident.status = status_update.status
 
         if status_update.status == "resolved":
@@ -585,18 +675,22 @@ def update_incident_status(incident_id: int, status_update: IncidentStatusUpdate
 
 
 @app.get("/incidents/{incident_id}/context")
-def get_incident_context(incident_id: int, window_minutes: int = 30):
+def get_incident_context(
+    incident_id: int,
+    window_minutes: int = 30,
+    current_user: User = Depends(get_current_user),
+):
     bounded_window = min(max(window_minutes, 1), 1440)
     db = SessionLocal()
-
     try:
-        incident = get_incident_or_404(db, incident_id)
+        incident = get_incident_or_404(db, incident_id, current_user.id)
         window_start = incident.created_at - timedelta(minutes=bounded_window)
         window_end = incident.resolved_at or datetime.now(timezone.utc)
 
         metrics = (
             db.query(Metric)
             .filter(
+                Metric.user_id == current_user.id,
                 Metric.service_name == incident.service_name,
                 Metric.created_at >= window_start,
                 Metric.created_at <= window_end,
@@ -607,6 +701,7 @@ def get_incident_context(incident_id: int, window_minutes: int = 30):
         logs = (
             db.query(LogEntry)
             .filter(
+                LogEntry.user_id == current_user.id,
                 LogEntry.service_name == incident.service_name,
                 LogEntry.created_at >= window_start,
                 LogEntry.created_at <= window_end,
@@ -629,11 +724,15 @@ def get_incident_context(incident_id: int, window_minutes: int = 30):
 
 
 @app.get("/logs")
-def get_logs(service_name: str | None = None, hostname: str | None = None, limit: int = 100):
+def get_logs(
+    current_user: User = Depends(get_current_user),
+    service_name: str | None = None,
+    hostname: str | None = None,
+    limit: int = 100,
+):
     db = SessionLocal()
-
     try:
-        query = db.query(LogEntry)
+        query = db.query(LogEntry).filter(LogEntry.user_id == current_user.id)
 
         if service_name:
             query = query.filter(LogEntry.service_name == service_name)
@@ -644,17 +743,14 @@ def get_logs(service_name: str | None = None, hostname: str | None = None, limit
         bounded_limit = min(max(limit, 1), 500)
 
         return (
-            query
-            .order_by(LogEntry.created_at.desc())
-            .limit(bounded_limit)
-            .all()
+            query.order_by(LogEntry.created_at.desc()).limit(bounded_limit).all()
         )
     finally:
         db.close()
 
 
-@app.post("/logs", dependencies=[Depends(require_agent_auth)])
-def create_log(log_entry: LogEntryCreate):
+@app.post("/logs")
+def create_log(log_entry: LogEntryCreate, agent_user: User = Depends(get_agent_user)):
     level = log_entry.level.lower()
 
     if level not in LOG_LEVELS:
@@ -664,9 +760,9 @@ def create_log(log_entry: LogEntryCreate):
         )
 
     db: Session = SessionLocal()
-
     try:
         new_log = LogEntry(
+            user_id=agent_user.id,
             service_name=log_entry.service_name,
             hostname=log_entry.hostname,
             level=level,
@@ -678,20 +774,20 @@ def create_log(log_entry: LogEntryCreate):
         db.commit()
         db.refresh(new_log)
 
-        return {
-            "message": "Log stored successfully",
-            "id": new_log.id,
-        }
+        return {"message": "Log stored successfully", "id": new_log.id}
     finally:
         db.close()
 
 
 @app.get("/reports")
-def get_reports(service_name: str | None = None, limit: int = 100):
+def get_reports(
+    current_user: User = Depends(get_current_user),
+    service_name: str | None = None,
+    limit: int = 100,
+):
     db = SessionLocal()
-
     try:
-        query = db.query(AnalysisReport)
+        query = db.query(AnalysisReport).filter(AnalysisReport.user_id == current_user.id)
 
         if service_name:
             query = query.filter(AnalysisReport.service_name == service_name)
@@ -699,42 +795,35 @@ def get_reports(service_name: str | None = None, limit: int = 100):
         bounded_limit = min(max(limit, 1), 500)
 
         return (
-            query
-            .order_by(AnalysisReport.created_at.desc())
-            .limit(bounded_limit)
-            .all()
+            query.order_by(AnalysisReport.created_at.desc()).limit(bounded_limit).all()
         )
     finally:
         db.close()
 
 
 @app.get("/reports/{report_id}")
-def get_report(report_id: int):
+def get_report(report_id: int, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
-
     try:
-        report = db.query(AnalysisReport).filter(AnalysisReport.id == report_id).first()
-
-        if report is None:
-            raise HTTPException(status_code=404, detail="Report not found")
-
-        return report
+        return get_report_or_404(db, report_id, current_user.id)
     finally:
         db.close()
 
 
-@app.post("/analysis/run", dependencies=[Depends(require_agent_auth)])
-def run_analysis(request: AnalysisRequest):
+@app.post("/analysis/run")
+def run_analysis(request: AnalysisRequest, agent_user: User = Depends(get_agent_user)):
     bounded_window = min(max(request.window_minutes, 1), 1440)
     window_start = datetime.now(timezone.utc) - timedelta(minutes=bounded_window)
     db: Session = SessionLocal()
 
     try:
         metrics_query = db.query(Metric).filter(
+            Metric.user_id == agent_user.id,
             Metric.service_name == request.service_name,
             Metric.created_at >= window_start,
         )
         logs_query = db.query(LogEntry).filter(
+            LogEntry.user_id == agent_user.id,
             LogEntry.service_name == request.service_name,
             LogEntry.created_at >= window_start,
         )
@@ -748,6 +837,7 @@ def run_analysis(request: AnalysisRequest):
         open_incidents = (
             db.query(Incident)
             .filter(
+                Incident.user_id == agent_user.id,
                 Incident.service_name == request.service_name,
                 Incident.status.in_(["open", "investigating"]),
             )
@@ -762,6 +852,7 @@ def run_analysis(request: AnalysisRequest):
             open_incidents,
         )
         report = AnalysisReport(
+            user_id=agent_user.id,
             **analysis,
             notification_target=request.notification_target,
             notification_sent=0,
@@ -770,10 +861,16 @@ def run_analysis(request: AnalysisRequest):
 
         incident = None
         if analysis["risk_level"] in {"warning", "critical"}:
-            service = db.query(Service).filter(Service.name == request.service_name).first()
+            service = get_service_by_identity(
+                db,
+                agent_user.id,
+                request.service_name,
+                request.hostname,
+            )
 
             if service is None:
                 service = Service(
+                    user_id=agent_user.id,
                     name=request.service_name,
                     hostname=request.hostname,
                     status=analysis["risk_level"],
@@ -782,6 +879,7 @@ def run_analysis(request: AnalysisRequest):
                 db.flush()
             else:
                 service.status = analysis["risk_level"]
+                touch_service(service, request.hostname)
 
             incident = create_incident_if_needed(db, service, analysis["risk_level"])
 
@@ -822,14 +920,13 @@ def run_analysis(request: AnalysisRequest):
 
 
 @app.post("/reports/{report_id}/notification/sent")
-def mark_report_notification_sent(report_id: int):
-    db: Session = SessionLocal()
-
+def mark_report_notification_sent(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    db = SessionLocal()
     try:
-        report = db.query(AnalysisReport).filter(AnalysisReport.id == report_id).first()
-
-        if report is None:
-            raise HTTPException(status_code=404, detail="Report not found")
+        report = get_report_or_404(db, report_id, current_user.id)
 
         report.notification_sent = 1
         db.commit()
@@ -842,3 +939,28 @@ def mark_report_notification_sent(report_id: int):
         }
     finally:
         db.close()
+
+
+@app.get("/install-agent.sh")
+def download_installer():
+    installer_path = PROJECT_ROOT / "scripts" / "install-agent.sh"
+
+    if not installer_path.exists():
+        raise HTTPException(status_code=404, detail="Installer not found")
+
+    return FileResponse(
+        installer_path,
+        media_type="text/x-shellscript",
+        filename="install-agent.sh",
+    )
+
+
+@app.get("/downloads/agent/{filename}")
+def download_agent_file(filename: str):
+    file_path = DOWNLOADABLE_AGENT_FILES.get(filename)
+
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Agent file not found")
+
+    media_type = "text/x-python" if filename.endswith(".py") else "text/plain"
+    return FileResponse(file_path, media_type=media_type, filename=filename)

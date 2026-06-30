@@ -3,11 +3,13 @@ import { Copy, Check, Terminal } from 'lucide-react';
 
 type AgentInstallProps = {
   apiBaseUrl: string;
+  registrationToken?: string;
 };
 
-export default function AgentInstall({ apiBaseUrl }: AgentInstallProps) {
+export default function AgentInstall({ apiBaseUrl, registrationToken }: AgentInstallProps) {
   const [copied, setCopied] = useState(false);
-  const installCmd = `curl -fsSL https://sentinel-ai.com/install-agent.sh | SENTINEL_API_BASE_URL=${apiBaseUrl} bash`;
+  const tokenSegment = registrationToken ? `SENTINEL_AGENT_TOKEN=${registrationToken} ` : '';
+  const installCmd = `curl -fsSL https://sentinel-ai.com/install-agent.sh | ${tokenSegment}SENTINEL_API_BASE_URL=${apiBaseUrl} bash`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(installCmd);
@@ -27,6 +29,7 @@ export default function AgentInstall({ apiBaseUrl }: AgentInstallProps) {
 
       <p className="text-slate-300 mb-6 text-sm">
         Run this command on your server to start collecting telemetry and receiving predictive failure alerts.
+        {registrationToken ? '' : ' Log in to reveal your personal registration token.'}
       </p>
 
       <div className="relative group">
