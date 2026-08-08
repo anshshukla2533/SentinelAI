@@ -66,3 +66,39 @@ class AnalysisRequest(BaseModel):
     hostname: Optional[str] = Field(default=None, max_length=255)
     window_minutes: int = Field(default=30, ge=1, le=1440)
     notification_target: Optional[str] = Field(default=None, max_length=320)
+
+
+class SystemCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)
+
+
+class DashboardLoginRequest(BaseModel):
+    access_key: str = Field(min_length=16, max_length=512)
+
+
+class SystemSummary(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    status: str
+    created_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+
+
+class SystemCreateResponse(BaseModel):
+    system: SystemSummary
+    agent_key: str
+    dashboard_key: str
+    install_command: str
+
+
+class WebLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class WebSignupRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=8, max_length=256)

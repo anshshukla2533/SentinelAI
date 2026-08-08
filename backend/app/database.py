@@ -8,12 +8,14 @@ from sqlalchemy.orm import sessionmaker
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DEFAULT_SQLITE_URL = "sqlite:///./sentinel.db"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+ENGINE_KWARGS = {}
 
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set. Add it to backend/app/.env or export it before starting the backend.")
+if DATABASE_URL.startswith("sqlite"):
+    ENGINE_KWARGS["connect_args"] = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, **ENGINE_KWARGS)
 
 SessionLocal = sessionmaker(
     autocommit=False,

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 INSTALL_DIR="${SENTINEL_INSTALL_DIR:-$HOME/.sentinel-ai-agent}"
-AGENT_BASE_URL="${SENTINEL_AGENT_BASE_URL:-https://sentinel-ai.com/downloads/agent}"
 API_BASE_URL="${SENTINEL_API_BASE_URL:-}"
 SERVICE_NAME="${SENTINEL_SERVICE_NAME:-$(hostname)}"
 WATCH_PROCESSES="${SENTINEL_WATCH_PROCESSES:-}"
@@ -11,6 +10,7 @@ CHECK_INTERVAL="${SENTINEL_CHECK_INTERVAL:-10}"
 ANALYSIS_INTERVAL="${SENTINEL_ANALYSIS_INTERVAL:-60}"
 REQUEST_TIMEOUT="${SENTINEL_REQUEST_TIMEOUT:-5}"
 AGENT_TOKEN="${SENTINEL_AGENT_TOKEN:-}"
+AGENT_BASE_URL="${SENTINEL_AGENT_BASE_URL:-}"
 INSTALL_SERVICE="${SENTINEL_INSTALL_SERVICE:-1}"
 
 print_usage() {
@@ -24,8 +24,8 @@ print_usage() {
     printf '%s\n' "  SENTINEL_ANALYSIS_INTERVAL=60"
     printf '%s\n' "  SENTINEL_REQUEST_TIMEOUT=5"
     printf '%s\n' "  SENTINEL_AGENT_TOKEN=token-if-required"
+    printf '%s\n' "  SENTINEL_AGENT_BASE_URL=https://api.sentinel-ai.com/downloads/agent"
     printf '%s\n' "  SENTINEL_INSTALL_SERVICE=0"
-    printf '%s\n' "  SENTINEL_AGENT_BASE_URL=https://sentinel-ai.com/downloads/agent"
 }
 
 require_command() {
@@ -58,6 +58,19 @@ if [ -z "$API_BASE_URL" ]; then
     printf '%s\n' "SENTINEL_API_BASE_URL is required." >&2
     print_usage
     exit 1
+fi
+
+if [ -z "$AGENT_BASE_URL" ]; then
+    AGENT_BASE_URL="$API_BASE_URL/downloads/agent"
+fi
+
+if [ -z "$AGENT_TOKEN" ] && [ -r /dev/tty ]; then
+    printf '%s' "Paste Sentinel API key for this machine (press Enter to skip): " > /dev/tty
+    IFS= read -r AGENT_TOKEN < /dev/tty || true
+fi
+
+if [ -z "$AGENT_TOKEN" ]; then
+    printf '%s\n' "Warning: no API key provided. The agent will install, but telemetry uploads will fail until SENTINEL_AGENT_TOKEN is set." >&2
 fi
 
 require_command python3

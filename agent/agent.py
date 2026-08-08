@@ -93,6 +93,17 @@ def get_load_average():
         return None
 
 
+def get_disk_usage():
+    """Return disk usage for the host's primary filesystem."""
+    if os.name == "nt":
+        drive = os.environ.get("SystemDrive", "C:")
+        path = f"{drive}\\"
+    else:
+        path = "/"
+
+    return round(psutil.disk_usage(path).percent, 1)
+
+
 def collect_metrics():
     """Collect current machine usage and identity details."""
     # psutil reads live system stats from the machine where this agent runs.
@@ -102,7 +113,7 @@ def collect_metrics():
         "service_name": SERVICE_NAME,
         "cpu": round(psutil.cpu_percent(interval=None), 1),
         "memory": round(psutil.virtual_memory().percent, 1),
-        "disk": round(psutil.disk_usage("/").percent, 1),
+        "disk": get_disk_usage(),
         "network_sent": float(network.bytes_sent),
         "network_recv": float(network.bytes_recv),
         "load_average": get_load_average(),
