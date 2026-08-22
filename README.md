@@ -42,6 +42,7 @@ Monitor any running service including:
 - Background Workers
 - Docker Containers
 - Custom Applications
+- Docker containers (`SENTINEL_WATCH_CONTAINERS`)
 
 Health states:
 
@@ -95,6 +96,63 @@ Real-time visualization of:
 - Predictive Failure Detection
 - AI-generated Incident Reports
 - Intelligent Alert Summaries
+
+---
+
+## Getting Started
+
+### 1. Start PostgreSQL (recommended)
+
+```bash
+docker compose up -d
+```
+
+Copy `backend/.env.example` to `backend/.env` and set:
+
+```
+DATABASE_URL=postgresql://sentinel:sentinel@127.0.0.1:5432/sentinel
+```
+
+SQLite still works for local development if you leave `DATABASE_URL` unset (`sentinel.db` in the backend folder).
+
+### 2. Run the backend
+
+```bash
+cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+### 3. Run the dashboard
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite URL (usually `http://127.0.0.1:5173`), create an account, then copy the agent install command from **Add a machine**.
+
+### 4. Run the agent
+
+```bash
+cd agent
+pip install -r requirements.txt
+# Use the registration token from your dashboard account
+set SENTINEL_API_BASE_URL=http://127.0.0.1:8000
+set SENTINEL_AGENT_TOKEN=your-registration-token
+set SENTINEL_WATCH_PROCESSES=nginx,postgres
+set SENTINEL_WATCH_CONTAINERS=all
+python agent.py
+```
+
+On macOS/Linux, export those same variables instead of `set`.
+
+`SENTINEL_WATCH_PROCESSES` is a comma-separated list of process names.  
+`SENTINEL_WATCH_CONTAINERS=all` reports Docker container health when the Docker CLI is installed; you can also list specific container names.
 
 ---
 
@@ -155,24 +213,11 @@ Real-time visualization of:
 
 ```
 SentinelAI/
-
-├── backend/
-│   ├── api/
-│   ├── models/
-│   ├── services/
-│   └── database/
-│
-├── frontend/
-│   ├── src/
-│   ├── components/
-│   ├── pages/
-│   └── hooks/
-│
-├── agent/
-│   ├── collector/
-│   ├── services/
-│   └── installer/
-│
+├── backend/                 # FastAPI app, models, auth, Alembic
+├── frontend/                # React + TypeScript dashboard
+├── agent/                   # psutil collector that posts metrics, health, logs
+├── scripts/                 # Agent installer and Windows exe build
+├── docker-compose.yml       # PostgreSQL
 └── README.md
 ```
 

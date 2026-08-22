@@ -6,6 +6,13 @@ html {
   scroll-behavior: smooth;
 }
 
+.shader-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
 body {
   min-width: 320px;
   background:

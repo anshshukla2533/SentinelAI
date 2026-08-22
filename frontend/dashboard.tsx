@@ -8,6 +8,7 @@ import {
   Grid2x2,
   Gauge,
   LineChart as LineChartIcon,
+  ScrollText,
   Server,
   Shield,
   Sparkles,
@@ -27,7 +28,7 @@ import {
 import AgentInstall from './AgentInstall';
 import { API_BASE_URL, apiRequest } from './api';
 import { useAuth } from './auth';
-import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, NavLink, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
 
 type MetricRecord = {
   id: number;
@@ -106,6 +107,7 @@ type IncidentContext = {
 };
 
 type WindowKey = '1h' | '24h' | '7d';
+type LogWindowKey = WindowKey | 'all';
 
 const WINDOW_HOURS: Record<WindowKey, number> = {
   '1h': 1,
@@ -124,6 +126,7 @@ export default function DashboardApp() {
           <Route path="overview" element={<OverviewPage />} />
           <Route path="add-machine" element={<AddMachinePage />} />
           <Route path="machines/:serviceId" element={<MachineDetailPage />} />
+          <Route path="logs" element={<LogsPage />} />
           <Route path="incidents" element={<IncidentsPage />} />
           <Route path="incidents/:incidentId" element={<IncidentsPage />} />
           <Route path="reports" element={<ReportsPage />} />
@@ -165,6 +168,7 @@ function DashboardHeader() {
 function DashboardNav() {
   const navItems = [
     { to: '/dashboard/overview', label: 'Overview', icon: <Grid2x2 className="h-4 w-4" /> },
+    { to: '/dashboard/logs', label: 'Logs', icon: <ScrollText className="h-4 w-4" /> },
     { to: '/dashboard/incidents', label: 'Incidents', icon: <Bell className="h-4 w-4" /> },
     { to: '/dashboard/reports', label: 'Reports', icon: <AlertCircle className="h-4 w-4" /> },
   ];
@@ -232,6 +236,13 @@ function OverviewPage() {
     };
   }, []);
 
+  const healthCounts = {
+    healthy: services.filter((service) => service.status === 'healthy').length,
+    warning: services.filter((service) => service.status === 'warning').length,
+    critical: services.filter((service) => service.status === 'critical').length,
+    incidents: services.reduce((total, service) => total + service.open_incidents_count, 0),
+  };
+
   return (
     <div className="space-y-8">
       <section className="rounded-3xl border border-white/10 bg-white/[0.05] p-8 shadow-2xl shadow-black/20">
@@ -257,6 +268,15 @@ function OverviewPage() {
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
+
+        {services.length > 0 ? (
+          <div className="mt-8 grid gap-3 sm:grid-cols-4">
+            <StatCard label="Healthy" value={String(healthCounts.healthy)} />
+            <StatCard label="Warning" value={String(healthCounts.warning)} />
+            <StatCard label="Critical" value={String(healthCounts.critical)} />
+            <StatCard label="Open incidents" value={String(healthCounts.incidents)} />
+          </div>
+        ) : null}
       </section>
 
       {error ? <InlineError message={error} /> : null}
@@ -421,6 +441,12 @@ function MachineDetailPage() {
             </div>
             <h1 className="mt-5 text-4xl font-semibold tracking-tight">{service.name}</h1>
             <p className="mt-3 text-slate-300">{service.hostname ?? 'No hostname recorded yet'}</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              <MiniStat label="Status" value={service.status} />
+              <MiniStat label="OS" value={service.latest_metric?.operating_system ?? 'Unknown'} />
+              <MiniStat label="Load average" value={service.latest_metric?.load_average != null ? String(service.latest_metric.load_average) : 'N/A'} />
+              <MiniStat label="Uptime" value={formatUptime(service.latest_metric?.uptime)} />
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -470,7 +496,18 @@ function MachineDetailPage() {
         </section>
 
         <section className="space-y-6">
-          <CardPanel title="Recent logs" icon={<AlertTriangle className="h-4 w-4" />}>
+          <CardPanel
+            title="Recent logs"
+            icon={<AlertTriangle className="h-4 w-4" />}
+            right={
+              <Link
+                to={`/dashboard/logs?service=${encodeURIComponent(service.name)}${service.hostname ? `&hostname=${encodeURIComponent(service.hostname)}` : ''}`}
+                className="text-sm font-semibold text-cyan-200 hover:text-cyan-100"
+              >
+                Search logs
+              </Link>
+            }
+          >
             <div className="space-y-3">
               {logs.length === 0 ? (
                 <EmptySlot text="No recent logs for this machine." />
@@ -497,10 +534,152 @@ function MachineDetailPage() {
   );
 }
 
-function IncidentsPage() {
+function LogsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const selectedIncidentId = searchParams.get('incidentId');
+  const [services, setServices] = useState<ServiceSummary[]>([]);
+  const [logs, setLogs] = useState<LogRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const serviceFilter = searchParams.get('service') ?? '';
+  const hostnameFilter = searchParams.get('hostname') ?? '';
+  const windowFilter = (searchParams.get('window') as LogWindowKey | null) ?? '24h';
+
+  useEffect(() => {
+    let active = true;
+
+    const loadLogs = async () => {
+      try {
+        const queryParts = ['limit=200'];
+        if (serviceFilter) {
+          queryParts.push(`service_name=${encodeURIComponent(serviceFilter)}`);
+        }
+        if (hostnameFilter) {
+          queryParts.push(`hostname=${encodeURIComponent(hostnameFilter)}`);
+        }
+        const since = sinceIso(windowFilter);
+        if (since) {
+          queryParts.push(`since=${encodeURIComponent(since)}`);
+        }
+
+        const [servicesResult, logsResult] = await Promise.all([
+          apiRequest<ServiceSummary[]>('/services'),
+          apiRequest<LogRecord[]>(`/logs?${queryParts.join('&')}`),
+        ]);
+        if (!active) {
+          return;
+        }
+        setServices(servicesResult);
+        setLogs(logsResult);
+        setError('');
+      } catch (requestError) {
+        if (!active) {
+          return;
+        }
+        setError(requestError instanceof Error ? requestError.message : 'Failed to load logs');
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadLogs();
+    const intervalId = window.setInterval(loadLogs, 12000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [serviceFilter, hostnameFilter, windowFilter]);
+
+  const hostnames = Array.from(new Set(services.map((service) => service.hostname).filter((value): value is string => Boolean(value))));
+  const serviceNames = Array.from(new Set(services.map((service) => service.name)));
+
+  const updateFilter = (key: 'service' | 'hostname' | 'window', value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) {
+      next.set(key, value);
+    } else {
+      next.delete(key);
+    }
+    setSearchParams(next);
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="Logs"
+        subtitle="Search centralized logs by machine, service, and time window."
+        icon={<ScrollText className="h-4 w-4" />}
+      />
+
+      <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/[0.04] p-4 md:grid-cols-3">
+        <label className="space-y-2 text-sm text-slate-300">
+          <span>Service</span>
+          <select
+            value={serviceFilter}
+            onChange={(event) => updateFilter('service', event.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-[#07111f] px-3 py-2 text-white outline-none"
+          >
+            <option value="">All services</option>
+            {serviceNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-2 text-sm text-slate-300">
+          <span>Machine</span>
+          <select
+            value={hostnameFilter}
+            onChange={(event) => updateFilter('hostname', event.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-[#07111f] px-3 py-2 text-white outline-none"
+          >
+            <option value="">All machines</option>
+            {hostnames.map((hostname) => (
+              <option key={hostname} value={hostname}>
+                {hostname}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-2 text-sm text-slate-300">
+          <span>Time</span>
+          <select
+            value={windowFilter}
+            onChange={(event) => updateFilter('window', event.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-[#07111f] px-3 py-2 text-white outline-none"
+          >
+            <option value="1h">Last hour</option>
+            <option value="24h">Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="all">All time</option>
+          </select>
+        </label>
+      </div>
+
+      {error ? <InlineError message={error} /> : null}
+
+      {loading ? (
+        <LoadingState />
+      ) : logs.length === 0 ? (
+        <EmptyState title="No logs" text="No logs match the current machine, service, and time filters." icon={<ScrollText className="h-5 w-5" />} />
+      ) : (
+        <div className="space-y-3">
+          {logs.map((log) => (
+            <LogRow key={log.id} log={log} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IncidentsPage() {
+  const { incidentId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedIncidentId = incidentId ?? searchParams.get('incidentId');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') ?? '');
   const [severityFilter, setSeverityFilter] = useState(searchParams.get('severity') ?? '');
   const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
@@ -1110,7 +1289,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <div className="text-sm text-slate-400">{label}</div>
-      <div className="mt-1 text-lg font-bold">{value}</div>
+      <div className="mt-1 truncate text-lg font-bold" title={value}>{value}</div>
     </div>
   );
 }
@@ -1125,6 +1304,10 @@ function LogRow({ log }: { log: LogRecord }) {
             <span className="text-xs text-slate-400">{formatRelativeTime(log.created_at)}</span>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-200">{log.message}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            {log.service_name}
+            {log.hostname ? ` · ${log.hostname}` : ''}
+          </p>
         </div>
       </div>
     </div>
@@ -1133,6 +1316,33 @@ function LogRow({ log }: { log: LogRecord }) {
 
 function EmptySlot({ text }: { text: string }) {
   return <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">{text}</div>;
+}
+
+function formatUptime(value?: number | null) {
+  if (value === undefined || value === null) {
+    return 'N/A';
+  }
+  const hours = Math.floor(value / 3600);
+  const days = Math.floor(hours / 24);
+  if (days > 0) {
+    return `${days}d ${hours % 24}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+  return `${Math.max(1, Math.floor(value / 60))}m`;
+}
+
+function sinceIso(windowKey: LogWindowKey) {
+  if (windowKey === 'all') {
+    return undefined;
+  }
+  const durationMs = {
+    '1h': 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+  }[windowKey];
+  return new Date(Date.now() - durationMs).toISOString();
 }
 
 function formatPercent(value?: number | null) {

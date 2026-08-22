@@ -831,6 +831,8 @@ def get_logs(
     current_user: User = Depends(get_current_user),
     service_name: str | None = None,
     hostname: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     limit: int = 100,
 ):
     db = SessionLocal()
@@ -842,6 +844,12 @@ def get_logs(
 
         if hostname:
             query = query.filter(LogEntry.hostname == hostname)
+
+        if since:
+            query = query.filter(LogEntry.created_at >= since)
+
+        if until:
+            query = query.filter(LogEntry.created_at <= until)
 
         bounded_limit = min(max(limit, 1), 500)
 

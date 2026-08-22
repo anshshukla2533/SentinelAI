@@ -1,7 +1,10 @@
 import argparse
+import json
 import os
 import platform
+import shutil
 import socket
+import subprocess
 import time
 
 import psutil
@@ -63,6 +66,7 @@ WATCH_PROCESSES = [
     for process in os.getenv("SENTINEL_WATCH_PROCESSES", "").split(",")
     if process.strip()
 ]
+WATCH_CONTAINERS = os.getenv("SENTINEL_WATCH_CONTAINERS", "").strip()
 REQUEST_HEADERS = {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else None
 
 # Use a session for connection pooling to improve performance
@@ -137,37 +141,95 @@ def collect_service_health():
         }
     ]
 
-    if not WATCH_PROCESSES:
-        return reports
-
-    # Initialize status map for watched processes
-    process_map = {
-        name: {
-            "process_name": name,
-            "running": False,
-            "process_cpu": None,
-            "process_memory": None,
+    if WATCH_PROCESSES:
+        process_map = {
+            name: {
+                "process_name": name,
+                "running": False,
+                "process_cpu": None,
+                "process_memory": None,
+            }
+            for name in WATCH_PROCESSES
         }
-        for name in WATCH_PROCESSES
-    }
 
-    # Scan all processes once to find matches
-    for process in psutil.process_iter(["name", "cpu_percent", "memory_percent"]):
-        try:
-            p_name = process.info["name"]
-            if p_name in process_map and not process_map[p_name]["running"]:
-                process_map[p_name].update({
-                    "running": True,
-                    "process_cpu": float(process.info["cpu_percent"] or 0),
-                    "process_memory": round(float(process.info["memory_percent"] or 0), 2),
-                })
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        for process in psutil.process_iter(["name", "cpu_percent", "memory_percent"]):
+            try:
+                p_name = process.info["name"]
+                if p_name in process_map and not process_map[p_name]["running"]:
+                    process_map[p_name].update({
+                        "running": True,
+                        "process_cpu": float(process.info["cpu_percent"] or 0),
+                        "process_memory": round(float(process.info["memory_percent"] or 0), 2),
+                    })
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        for process_name in WATCH_PROCESSES:
+            report = {"hostname": hostname, "service_name": process_name}
+            report.update(process_map[process_name])
+            reports.append(report)
+
+    reports.extend(collect_container_health(hostname))
+    return reports
+
+
+def collect_container_health(hostname):
+    """Build health reports for Docker containers when Docker is available."""
+    watch_value = WATCH_CONTAINERS.lower()
+    if watch_value in {"", "0", "off", "false", "none"}:
+        return []
+
+    if not shutil.which("docker"):
+        return []
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    wanted = None if watch_value in {"*", "all"} else {
+        name.strip()
+        for name in WATCH_CONTAINERS.split(",")
+        if name.strip()
+    }
+    reports = []
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
             continue
 
-    for process_name in WATCH_PROCESSES:
-        report = {"hostname": hostname, "service_name": process_name}
-        report.update(process_map[process_name])
-        reports.append(report)
+        try:
+            container = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        name = str(container.get("Names") or container.get("Name") or "").lstrip("/")
+        if not name:
+            continue
+        if wanted is not None and name not in wanted:
+            continue
+
+        state = str(container.get("State") or "").lower()
+        reports.append(
+            {
+                "service_name": f"docker:{name}",
+                "hostname": hostname,
+                "process_name": name,
+                "running": state == "running",
+                "process_cpu": None,
+                "process_memory": None,
+            }
+        )
 
     return reports
 

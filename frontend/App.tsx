@@ -12,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import AgentInstall from './AgentInstall';
+import { Scene } from './LandingScene';
 import { API_BASE_URL } from './api';
 import { AuthProvider, useAuth } from './auth';
 import DashboardApp from './dashboard';
@@ -106,10 +107,9 @@ function LandingPage() {
 
       <main>
         <section className="relative min-h-[92vh] overflow-hidden pt-24">
-          <div className="ai-grid absolute inset-0" />
-          <div className="signal signal-one" />
-          <div className="signal signal-two" />
-          <div className="signal signal-three" />
+          <div className="pointer-events-none absolute inset-0">
+            <Scene />
+          </div>
 
           <div className="relative z-10 mx-auto flex min-h-[calc(92vh-6rem)] max-w-6xl flex-col justify-center px-6 py-16">
             <div className="max-w-4xl">
