@@ -18,6 +18,8 @@ class UserRead(BaseModel):
     id: int
     email: str
     registration_token: str
+    clerk_user_id: Optional[str] = None
+    default_organization_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
 
@@ -38,6 +40,34 @@ class MetricCreate(BaseModel):
     uptime: Optional[float] = Field(default=None, ge=0)
     hostname: Optional[str] = Field(default=None, max_length=255)
     operating_system: Optional[str] = Field(default=None, max_length=255)
+
+
+class MachineCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    hostname: str = Field(min_length=1, max_length=255)
+
+
+class MachineRead(BaseModel):
+    id: str
+    organization_id: str
+    created_by_user_id: int
+    name: str
+    hostname: str
+    key_prefix: str
+    status: str
+    last_seen_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class MachineCreateResponse(BaseModel):
+    machine: MachineRead
+    machine_api_key: str
+
+
+class OrganizationRead(BaseModel):
+    id: str
+    name: str
+    created_at: Optional[datetime] = None
 
 
 class ServiceHealthCreate(BaseModel):
