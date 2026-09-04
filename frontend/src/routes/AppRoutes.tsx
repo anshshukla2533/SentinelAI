@@ -11,8 +11,8 @@ import { LogsPage } from '../pages/Logs';
 import { AlertsPage } from '../pages/Alerts';
 import { SettingsPage } from '../pages/Settings';
 import { NotFoundPage } from '../pages/NotFound';
+import { DocsPage } from '../pages/Docs';
 import { PrivateRoute } from './PrivateRoute';
-import { PublicRoute } from './PublicRoute';
 
 export function AppRoutes() {
   return (
@@ -22,20 +22,13 @@ export function AppRoutes() {
           <Route path="/" element={<LandingPage />} />
           <Route
             path="/login"
-            element={
-              <PublicRoute>
-                <LoginPage />
-              </PublicRoute>
-            }
+            element={<LoginPage />}
           />
           <Route
             path="/signup"
-            element={
-              <PublicRoute>
-                <SignupPage />
-              </PublicRoute>
-            }
+            element={<SignupPage />}
           />
+           <Route path="/docs" element={<DocsPage />} />
           <Route
             path="/dashboard"
             element={
