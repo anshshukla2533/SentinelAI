@@ -25,7 +25,7 @@ print_usage() {
     printf '%s\n' "  SENTINEL_CHECK_INTERVAL=10"
     printf '%s\n' "  SENTINEL_ANALYSIS_INTERVAL=60"
     printf '%s\n' "  SENTINEL_REQUEST_TIMEOUT=5"
-    printf '%s\n' "  SENTINEL_AGENT_TOKEN=token-if-required"
+    printf '%s\n' "  SENTINEL_MACHINE_CODE=machine-code-from-dashboard"
     printf '%s\n' "  SENTINEL_AGENT_BASE_URL=https://api.sentinel-ai.com/downloads/agent"
     printf '%s\n' "  SENTINEL_INSTALL_SERVICE=0"
 }
@@ -67,7 +67,7 @@ if [ -z "$AGENT_BASE_URL" ]; then
 fi
 
 if [ -z "$AGENT_TOKEN" ] && [ -r /dev/tty ]; then
-    printf '%s' "Paste Sentinel API key for this machine (press Enter to skip): " > /dev/tty
+    printf '%s' "Paste Sentinel machine code (press Enter to skip): " > /dev/tty
     IFS= read -r AGENT_TOKEN < /dev/tty || true
 fi
 
@@ -94,6 +94,7 @@ SENTINEL_NOTIFICATION_TARGET=$NOTIFICATION_TARGET
 SENTINEL_CHECK_INTERVAL=$CHECK_INTERVAL
 SENTINEL_ANALYSIS_INTERVAL=$ANALYSIS_INTERVAL
 SENTINEL_REQUEST_TIMEOUT=$REQUEST_TIMEOUT
+SENTINEL_MACHINE_CODE=$AGENT_TOKEN
 SENTINEL_AGENT_TOKEN=$AGENT_TOKEN
 EOF
 
