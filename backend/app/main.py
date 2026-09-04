@@ -3,18 +3,24 @@ import smtplib
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from .auth import (
     clear_auth_cookie,
     create_access_token,
+    create_machine_api_key,
     create_registration_token,
+    get_db,
+    get_agent_machine,
     get_agent_user,
     get_current_user,
+    hash_machine_api_key,
     hash_password,
     serialize_user,
     set_auth_cookie,
@@ -22,10 +28,13 @@ from .auth import (
 )
 from .database import Base, SessionLocal, engine
 from .migrations import upgrade_database
-from .models import AnalysisReport, Incident, LogEntry, Metric, Service, User
+from .models import AnalysisReport, Incident, LogEntry, Machine, Metric, Organization, Service, User
 from .schemas import (
     AnalysisRequest,
     AuthResponse,
+    MachineCreate,
+    MachineCreateResponse,
+    MachineRead,
     IncidentStatusUpdate,
     LogEntryCreate,
     MetricCreate,
@@ -46,8 +55,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+        
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -60,7 +68,84 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOWNLOADABLE_AGENT_FILES = {
     "agent.py": PROJECT_ROOT / "agent" / "agent.py",
     "requirements.txt": PROJECT_ROOT / "agent" / "requirements.txt",
+    "sentinel-agent.exe": PROJECT_ROOT / "agent" / "dist" / "sentinel-agent.exe",
 }
+
+
+def tenant_organization_id(user: User) -> str:
+    if not user.default_organization_id:
+        raise HTTPException(status_code=403, detail="No active Clerk organization")
+    return user.default_organization_id
+
+
+def tenant_clause(model, user: User):
+    if hasattr(model, "user_id"):
+        return model.user_id == user.id
+    if hasattr(model, "created_by_user_id"):
+        return model.created_by_user_id == user.id
+    return model.organization_id == tenant_organization_id(user)
+
+
+def machine_for_org(db: Session, user: User, machine_id: UUID | None):
+    if machine_id is None:
+        return None
+
+    machine = (
+        db.query(Machine)
+        .filter(
+            Machine.id == machine_id,
+            Machine.created_by_user_id == user.id,
+        )
+        .first()
+    )
+    if machine is None:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    return machine
+
+
+def serialize_organization(organization: Organization):
+    return {
+        "id": organization.id,
+        "name": organization.name,
+        "created_at": organization.created_at,
+    }
+
+
+def serialize_machine(machine: Machine):
+    return {
+        "id": machine.id,
+        "organization_id": machine.organization_id,
+        "created_by_user_id": machine.created_by_user_id,
+        "name": machine.name,
+        "hostname": machine.hostname,
+        "key_prefix": machine.key_prefix,
+        "status": machine.status,
+        "last_seen_at": machine.last_seen_at,
+        "created_at": machine.created_at,
+    }
+
+
+def ensure_organization_for_user(db: Session, user: User, organization_name: str | None = None) -> Organization:
+    organization = None
+    if user.default_organization_id:
+        organization = db.query(Organization).filter(Organization.id == user.default_organization_id).first()
+
+    if organization is None:
+        organization_id = f"user_{user.id}"
+        organization = db.query(Organization).filter(Organization.id == organization_id).first()
+        if organization is None:
+            organization = Organization(
+                id=organization_id,
+                name=organization_name or f"{user.email}'s workspace",
+            )
+            db.add(organization)
+            db.flush()
+
+    if user.default_organization_id != organization.id:
+        user.default_organization_id = organization.id
+        db.flush()
+
+    return organization
 
 
 def calculate_service_status(health: ServiceHealthCreate):
@@ -328,11 +413,22 @@ def send_report_email(report: AnalysisReport):
 
 def get_service_by_identity(
     db: Session,
-    user_id: int,
+    user: User,
     service_name: str,
     hostname: str | None,
+    machine: Machine | None = None,
 ):
-    query = db.query(Service).filter(Service.user_id == user_id, Service.name == service_name)
+    if machine is not None:
+        query = db.query(Service).filter(
+            Service.organization_id == machine.organization_id,
+            Service.machine_id == machine.id,
+            Service.name == service_name,
+        )
+    else:
+        query = db.query(Service).filter(
+            tenant_clause(Service, user),
+            Service.name == service_name,
+        )
     if hostname is None:
         query = query.filter(Service.hostname.is_(None))
     else:
@@ -355,11 +451,14 @@ def upsert_service_for_write(
     hostname: str | None,
     status: str | None = None,
     process_name: str | None = None,
+    machine: Machine | None = None,
 ):
-    service = get_service_by_identity(db, user.id, service_name, hostname)
+    service = get_service_by_identity(db, user, service_name, hostname, machine=machine)
     if service is None:
         service = Service(
             user_id=user.id,
+            organization_id=machine.organization_id if machine is not None else tenant_organization_id(user),
+            machine_id=machine.id if machine is not None else None,
             name=service_name,
             hostname=hostname,
             process_name=process_name,
@@ -373,6 +472,9 @@ def upsert_service_for_write(
             service.process_name = process_name
         if hostname is not None:
             service.hostname = hostname
+        if machine is not None:
+            service.machine_id = machine.id
+        service.organization_id = machine.organization_id if machine is not None else tenant_organization_id(user)
     touch_service(service, hostname, process_name)
     return service
 
@@ -385,6 +487,8 @@ def create_incident_if_needed(db: Session, service: Service, status: str):
         db.query(Incident)
         .filter(
             Incident.user_id == service.user_id,
+            Incident.organization_id == service.organization_id,
+            Incident.machine_id == service.machine_id,
             Incident.service_id == service.id,
             Incident.status.in_(["open", "investigating"]),
         )
@@ -396,6 +500,8 @@ def create_incident_if_needed(db: Session, service: Service, status: str):
 
     incident = Incident(
         user_id=service.user_id,
+        organization_id=service.organization_id,
+        machine_id=service.machine_id,
         service_id=service.id,
         service_name=service.name,
         title=f"{service.name} is {status}",
@@ -406,10 +512,13 @@ def create_incident_if_needed(db: Session, service: Service, status: str):
     return incident
 
 
-def get_incident_or_404(db: Session, incident_id: int, user_id: int):
+def get_incident_or_404(db: Session, incident_id: int, user: User):
     incident = (
         db.query(Incident)
-        .filter(Incident.id == incident_id, Incident.user_id == user_id)
+        .filter(
+            Incident.id == incident_id,
+            Incident.user_id == user.id,
+        )
         .first()
     )
 
@@ -419,10 +528,13 @@ def get_incident_or_404(db: Session, incident_id: int, user_id: int):
     return incident
 
 
-def get_report_or_404(db: Session, report_id: int, user_id: int):
+def get_report_or_404(db: Session, report_id: int, user: User):
     report = (
         db.query(AnalysisReport)
-        .filter(AnalysisReport.id == report_id, AnalysisReport.user_id == user_id)
+        .filter(
+            AnalysisReport.id == report_id,
+            AnalysisReport.user_id == user.id,
+        )
         .first()
     )
 
@@ -452,13 +564,22 @@ def serialize_metric(metric: Metric | None):
     }
 
 
-def serialize_service_summary(service: Service, latest_metric: Metric | None, open_incidents_count: int):
+def serialize_service_summary(
+    service: Service,
+    latest_metric: Metric | None,
+    open_incidents_count: int,
+    machine: Machine | None = None,
+):
     return {
         "id": service.id,
         "name": service.name,
         "hostname": service.hostname,
         "process_name": service.process_name,
         "status": service.status,
+        "organization_id": service.organization_id,
+        "machine_id": service.machine_id,
+        "machine_name": machine.name if machine else None,
+        "machine_hostname": machine.hostname if machine else None,
         "created_at": service.created_at,
         "last_seen_at": service.last_seen_at,
         "latest_metric": serialize_metric(latest_metric),
@@ -470,6 +591,8 @@ def serialize_incident(incident: Incident):
     return {
         "id": incident.id,
         "user_id": incident.user_id,
+        "organization_id": incident.organization_id,
+        "machine_id": incident.machine_id,
         "service_id": incident.service_id,
         "service_name": incident.service_name,
         "title": incident.title,
@@ -484,6 +607,8 @@ def serialize_report(report: AnalysisReport):
     return {
         "id": report.id,
         "user_id": report.user_id,
+        "organization_id": report.organization_id,
+        "machine_id": report.machine_id,
         "service_name": report.service_name,
         "hostname": report.hostname,
         "risk_level": report.risk_level,
@@ -533,6 +658,10 @@ def signup(payload: UserCreate, response: Response):
         db.commit()
         db.refresh(user)
 
+        ensure_organization_for_user(db, user, f"{user.email}'s organization")
+        db.commit()
+        db.refresh(user)
+
         access_token = create_access_token(user)
         set_auth_cookie(response, access_token)
         return {
@@ -552,6 +681,10 @@ def login(payload: UserLogin, response: Response):
         user = db.query(User).filter(User.email == email).first()
         if user is None or not verify_password(payload.password, user.hashed_password):
             raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        ensure_organization_for_user(db, user, f"{user.email}'s organization")
+        db.commit()
+        db.refresh(user)
 
         access_token = create_access_token(user)
         set_auth_cookie(response, access_token)
@@ -575,38 +708,206 @@ def get_me(current_user: User = Depends(get_current_user)):
     return serialize_user(current_user)
 
 
+@app.get("/organizations/current")
+def get_current_organization(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        organization = ensure_organization_for_user(db, current_user)
+        db.commit()
+        return serialize_organization(organization)
+    finally:
+        db.close()
+
+
+@app.get("/agent/verify")
+def verify_agent_machine(
+    machine: Machine = Depends(get_agent_machine),
+    db: Session = Depends(get_db),
+):
+    organization = db.query(Organization).filter(Organization.id == machine.organization_id).first()
+    if organization is None:
+        raise HTTPException(status_code=401, detail="Machine organization not found")
+
+    machine.status = "active"
+    machine.last_seen_at = datetime.now(timezone.utc)
+    db.commit()
+    return {
+        "name": machine.name,
+        "organization_name": organization.name,
+    }
+
+
+@app.get("/machines")
+def get_machines(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        machines = (
+            db.query(Machine)
+            .filter(tenant_clause(Machine, current_user))
+            .order_by(Machine.created_at.desc())
+            .all()
+        )
+        return [serialize_machine(machine) for machine in machines]
+    finally:
+        db.close()
+
+
+@app.post("/machines", response_model=MachineCreateResponse)
+def create_machine(
+    payload: MachineCreate,
+    current_user: User = Depends(get_current_user),
+):
+    db = SessionLocal()
+    try:
+        organization = ensure_organization_for_user(db, current_user)
+        organization_id = organization.id
+        existing_machine = (
+            db.query(Machine)
+            .filter(
+                Machine.organization_id == organization_id,
+                Machine.name == payload.name,
+                Machine.hostname == payload.hostname,
+            )
+            .first()
+        )
+        if existing_machine is not None:
+            raise HTTPException(status_code=409, detail="Machine already exists")
+
+        machine_api_key = create_machine_api_key()
+        machine = Machine(
+            organization_id=organization_id,
+            created_by_user_id=current_user.id,
+            name=payload.name,
+            hostname=payload.hostname,
+            api_key_hash=hash_machine_api_key(machine_api_key),
+            key_prefix=machine_api_key[:19],
+            status="pending",
+        )
+        db.add(machine)
+        db.commit()
+        db.refresh(machine)
+
+        return {
+            "machine": serialize_machine(machine),
+            "machine_api_key": machine_api_key,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/machines/{machine_id}/rotate-key")
+def rotate_machine_key(
+    machine_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    db = SessionLocal()
+    try:
+        machine = (
+            db.query(Machine)
+            .filter(
+                Machine.id == machine_id,
+                tenant_clause(Machine, current_user),
+            )
+            .first()
+        )
+        if machine is None:
+            raise HTTPException(status_code=404, detail="Machine not found")
+
+        new_machine_api_key = create_machine_api_key()
+        machine.api_key_hash = hash_machine_api_key(new_machine_api_key)
+        machine.key_prefix = new_machine_api_key[:19]
+        db.commit()
+        db.refresh(machine)
+
+        return {
+            "machine": serialize_machine(machine),
+            "machine_api_key": new_machine_api_key,
+        }
+    finally:
+        db.close()
+
+
+@app.delete("/machines/{machine_id}")
+def revoke_machine(
+    machine_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    db = SessionLocal()
+    try:
+        machine = (
+            db.query(Machine)
+            .filter(
+                Machine.id == machine_id,
+                Machine.organization_id == tenant_organization_id(current_user),
+            )
+            .first()
+        )
+        if machine is None:
+            raise HTTPException(status_code=404, detail="Machine not found")
+
+        machine.status = "revoked"
+        db.commit()
+        return {"message": "Machine revoked", "machine_id": machine.id}
+    finally:
+        db.close()
+
+
 @app.get("/metrics")
 def get_metrics(
     current_user: User = Depends(get_current_user),
     service_name: str | None = None,
     hostname: str | None = None,
+    machine_id: UUID | None = None,
     limit: int = 100,
 ):
     db = SessionLocal()
     try:
-        query = db.query(Metric).filter(Metric.user_id == current_user.id)
+        machine = machine_for_org(db, current_user, machine_id)
+        query = (
+            db.query(Metric, Machine)
+            .join(Machine, Metric.machine_id == Machine.id)
+            .filter(
+                Metric.organization_id == tenant_organization_id(current_user),
+                Machine.organization_id == tenant_organization_id(current_user),
+            )
+        )
 
         if service_name:
             query = query.filter(Metric.service_name == service_name)
 
         if hostname:
             query = query.filter(Metric.hostname == hostname)
+        if machine is not None:
+            query = query.filter(Metric.machine_id == machine.id)
 
         bounded_limit = min(max(limit, 1), 500)
 
-        return (
-            query.order_by(Metric.created_at.desc()).limit(bounded_limit).all()
-        )
+        rows = query.order_by(Metric.created_at.desc()).limit(bounded_limit).all()
+        return [
+            {
+                **serialize_metric(metric),
+                "machine_id": machine_row.id,
+                "machine_name": machine_row.name,
+                "machine_hostname": machine_row.hostname,
+            }
+            for metric, machine_row in rows
+        ]
     finally:
         db.close()
 
 
 @app.post("/metrics")
-def create_metric(metric: MetricCreate, agent_user: User = Depends(get_agent_user)):
+def create_metric(
+    metric: MetricCreate,
+    agent_user: User = Depends(get_agent_user),
+    agent_machine: Machine = Depends(get_agent_machine),
+):
     db: Session = SessionLocal()
     try:
         new_metric = Metric(
             user_id=agent_user.id,
+            organization_id=agent_machine.organization_id,
+            machine_id=agent_machine.id,
             service_name=metric.service_name,
             cpu=metric.cpu,
             memory=metric.memory,
@@ -625,6 +926,7 @@ def create_metric(metric: MetricCreate, agent_user: User = Depends(get_agent_use
             agent_user,
             metric.service_name,
             metric.hostname,
+            machine=agent_machine,
         )
         db.commit()
         db.refresh(new_metric)
@@ -635,20 +937,26 @@ def create_metric(metric: MetricCreate, agent_user: User = Depends(get_agent_use
 
 
 @app.get("/services")
-def get_services(current_user: User = Depends(get_current_user)):
+def get_services(
+    current_user: User = Depends(get_current_user),
+    machine_id: UUID | None = None,
+):
     db = SessionLocal()
     try:
+        machine = machine_for_org(db, current_user, machine_id)
         services = (
             db.query(Service)
-            .filter(Service.user_id == current_user.id)
+            .filter(tenant_clause(Service, current_user))
             .order_by(Service.last_seen_at.desc(), Service.created_at.desc())
             .all()
         )
+        if machine is not None:
+            services = [service for service in services if service.machine_id == machine.id]
 
         summaries = []
         for service in services:
             latest_metric_query = db.query(Metric).filter(
-                Metric.user_id == current_user.id,
+                tenant_clause(Metric, current_user),
                 Metric.service_name == service.name,
             )
             if service.hostname is None:
@@ -660,14 +968,19 @@ def get_services(current_user: User = Depends(get_current_user)):
             open_incidents_count = (
                 db.query(Incident)
                 .filter(
-                    Incident.user_id == current_user.id,
+                    tenant_clause(Incident, current_user),
                     Incident.service_id == service.id,
                     Incident.status.in_(["open", "investigating"]),
                 )
                 .count()
             )
             summaries.append(
-                serialize_service_summary(service, latest_metric, open_incidents_count)
+                serialize_service_summary(
+                    service,
+                    latest_metric,
+                    open_incidents_count,
+                    db.query(Machine).filter(Machine.id == service.machine_id).first(),
+                )
             )
 
         return summaries
@@ -679,6 +992,7 @@ def get_services(current_user: User = Depends(get_current_user)):
 def report_service_health(
     health: ServiceHealthCreate,
     agent_user: User = Depends(get_agent_user),
+    agent_machine: Machine = Depends(get_agent_machine),
 ):
     db: Session = SessionLocal()
     try:
@@ -690,6 +1004,7 @@ def report_service_health(
             health.hostname,
             status=status_value,
             process_name=health.process_name,
+            machine=agent_machine,
         )
 
         db.flush()
@@ -720,7 +1035,7 @@ def get_incidents(
 ):
     db = SessionLocal()
     try:
-        query = db.query(Incident).filter(Incident.user_id == current_user.id)
+        query = db.query(Incident).filter(tenant_clause(Incident, current_user))
 
         if status:
             query = query.filter(Incident.status == status)
@@ -737,7 +1052,7 @@ def get_incidents(
 def get_incident(incident_id: int, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        return get_incident_or_404(db, incident_id, current_user.id)
+        return get_incident_or_404(db, incident_id, current_user)
     finally:
         db.close()
 
@@ -756,7 +1071,7 @@ def update_incident_status(
 
     db: Session = SessionLocal()
     try:
-        incident = get_incident_or_404(db, incident_id, current_user.id)
+        incident = get_incident_or_404(db, incident_id, current_user)
         incident.status = status_update.status
 
         if status_update.status == "resolved":
@@ -786,14 +1101,14 @@ def get_incident_context(
     bounded_window = min(max(window_minutes, 1), 1440)
     db = SessionLocal()
     try:
-        incident = get_incident_or_404(db, incident_id, current_user.id)
+        incident = get_incident_or_404(db, incident_id, current_user)
         window_start = incident.created_at - timedelta(minutes=bounded_window)
         window_end = incident.resolved_at or datetime.now(timezone.utc)
 
         metrics = (
             db.query(Metric)
             .filter(
-                Metric.user_id == current_user.id,
+                tenant_clause(Metric, current_user),
                 Metric.service_name == incident.service_name,
                 Metric.created_at >= window_start,
                 Metric.created_at <= window_end,
@@ -801,10 +1116,12 @@ def get_incident_context(
             .order_by(Metric.created_at.asc())
             .all()
         )
+        if incident.machine_id is not None:
+            metrics = [metric for metric in metrics if metric.machine_id == incident.machine_id]
         logs = (
             db.query(LogEntry)
             .filter(
-                LogEntry.user_id == current_user.id,
+                tenant_clause(LogEntry, current_user),
                 LogEntry.service_name == incident.service_name,
                 LogEntry.created_at >= window_start,
                 LogEntry.created_at <= window_end,
@@ -812,6 +1129,8 @@ def get_incident_context(
             .order_by(LogEntry.created_at.desc())
             .all()
         )
+        if incident.machine_id is not None:
+            logs = [log for log in logs if log.machine_id == incident.machine_id]
 
         return {
             "incident": incident,
@@ -833,11 +1152,20 @@ def get_logs(
     hostname: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    machine_id: UUID | None = None,
     limit: int = 100,
 ):
     db = SessionLocal()
     try:
-        query = db.query(LogEntry).filter(LogEntry.user_id == current_user.id)
+        machine = machine_for_org(db, current_user, machine_id)
+        query = (
+            db.query(LogEntry, Machine)
+            .join(Machine, LogEntry.machine_id == Machine.id)
+            .filter(
+                LogEntry.organization_id == tenant_organization_id(current_user),
+                Machine.organization_id == tenant_organization_id(current_user),
+            )
+        )
 
         if service_name:
             query = query.filter(LogEntry.service_name == service_name)
@@ -850,18 +1178,37 @@ def get_logs(
 
         if until:
             query = query.filter(LogEntry.created_at <= until)
+        if machine is not None:
+            query = query.filter(LogEntry.machine_id == machine.id)
 
         bounded_limit = min(max(limit, 1), 500)
 
-        return (
-            query.order_by(LogEntry.created_at.desc()).limit(bounded_limit).all()
-        )
+        rows = query.order_by(LogEntry.created_at.desc()).limit(bounded_limit).all()
+        return [
+            {
+                "id": log.id,
+                "service_name": log.service_name,
+                "hostname": log.hostname,
+                "level": log.level,
+                "message": log.message,
+                "source": log.source,
+                "created_at": log.created_at,
+                "machine_id": machine_row.id,
+                "machine_name": machine_row.name,
+                "machine_hostname": machine_row.hostname,
+            }
+            for log, machine_row in rows
+        ]
     finally:
         db.close()
 
 
 @app.post("/logs")
-def create_log(log_entry: LogEntryCreate, agent_user: User = Depends(get_agent_user)):
+def create_log(
+    log_entry: LogEntryCreate,
+    agent_user: User = Depends(get_agent_user),
+    agent_machine: Machine = Depends(get_agent_machine),
+):
     level = log_entry.level.lower()
 
     if level not in LOG_LEVELS:
@@ -874,6 +1221,8 @@ def create_log(log_entry: LogEntryCreate, agent_user: User = Depends(get_agent_u
     try:
         new_log = LogEntry(
             user_id=agent_user.id,
+            organization_id=agent_machine.organization_id,
+            machine_id=agent_machine.id,
             service_name=log_entry.service_name,
             hostname=log_entry.hostname,
             level=level,
@@ -898,7 +1247,7 @@ def get_reports(
 ):
     db = SessionLocal()
     try:
-        query = db.query(AnalysisReport).filter(AnalysisReport.user_id == current_user.id)
+        query = db.query(AnalysisReport).filter(tenant_clause(AnalysisReport, current_user))
 
         if service_name:
             query = query.filter(AnalysisReport.service_name == service_name)
@@ -914,27 +1263,33 @@ def get_reports(
 def get_report(report_id: int, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        return get_report_or_404(db, report_id, current_user.id)
+        return get_report_or_404(db, report_id, current_user)
     finally:
         db.close()
 
 
 @app.post("/analysis/run")
-def run_analysis(request: AnalysisRequest, agent_user: User = Depends(get_agent_user)):
+def run_analysis(
+    request: AnalysisRequest,
+    agent_user: User = Depends(get_agent_user),
+    agent_machine: Machine = Depends(get_agent_machine),
+):
     bounded_window = min(max(request.window_minutes, 1), 1440)
     window_start = datetime.now(timezone.utc) - timedelta(minutes=bounded_window)
     db: Session = SessionLocal()
 
     try:
         metrics_query = db.query(Metric).filter(
-            Metric.user_id == agent_user.id,
+            Metric.organization_id == agent_machine.organization_id,
             Metric.service_name == request.service_name,
             Metric.created_at >= window_start,
+            Metric.machine_id == agent_machine.id,
         )
         logs_query = db.query(LogEntry).filter(
-            LogEntry.user_id == agent_user.id,
+            LogEntry.organization_id == agent_machine.organization_id,
             LogEntry.service_name == request.service_name,
             LogEntry.created_at >= window_start,
+            LogEntry.machine_id == agent_machine.id,
         )
 
         if request.hostname:
@@ -946,8 +1301,9 @@ def run_analysis(request: AnalysisRequest, agent_user: User = Depends(get_agent_
         open_incidents = (
             db.query(Incident)
             .filter(
-                Incident.user_id == agent_user.id,
+                Incident.organization_id == agent_machine.organization_id,
                 Incident.service_name == request.service_name,
+                Incident.machine_id == agent_machine.id,
                 Incident.status.in_(["open", "investigating"]),
             )
             .all()
@@ -962,6 +1318,8 @@ def run_analysis(request: AnalysisRequest, agent_user: User = Depends(get_agent_
         )
         report = AnalysisReport(
             user_id=agent_user.id,
+            organization_id=agent_machine.organization_id,
+            machine_id=agent_machine.id,
             **analysis,
             notification_target=request.notification_target,
             notification_sent=0,
@@ -972,14 +1330,17 @@ def run_analysis(request: AnalysisRequest, agent_user: User = Depends(get_agent_
         if analysis["risk_level"] in {"warning", "critical"}:
             service = get_service_by_identity(
                 db,
-                agent_user.id,
+                agent_user,
                 request.service_name,
                 request.hostname,
+                machine=agent_machine,
             )
 
             if service is None:
                 service = Service(
                     user_id=agent_user.id,
+                    organization_id=agent_machine.organization_id,
+                    machine_id=agent_machine.id,
                     name=request.service_name,
                     hostname=request.hostname,
                     status=analysis["risk_level"],
@@ -1035,7 +1396,7 @@ def mark_report_notification_sent(
 ):
     db = SessionLocal()
     try:
-        report = get_report_or_404(db, report_id, current_user.id)
+        report = get_report_or_404(db, report_id, current_user)
 
         report.notification_sent = 1
         db.commit()
@@ -1071,5 +1432,10 @@ def download_agent_file(filename: str):
     if file_path is None or not file_path.exists():
         raise HTTPException(status_code=404, detail="Agent file not found")
 
-    media_type = "text/x-python" if filename.endswith(".py") else "text/plain"
+    if filename.endswith(".exe"):
+        media_type = "application/octet-stream"
+    elif filename.endswith(".py"):
+        media_type = "text/x-python"
+    else:
+        media_type = "text/plain"
     return FileResponse(file_path, media_type=media_type, filename=filename)
