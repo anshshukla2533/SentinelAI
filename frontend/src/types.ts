@@ -11,6 +11,32 @@ export type MetricRecord = {
   hostname?: string | null;
   operating_system?: string | null;
   created_at?: string | null;
+  machine_id?: string;
+  machine_name?: string;
+  machine_hostname?: string;
+};
+
+export type OrganizationRecord = {
+  id: string;
+  name: string;
+  created_at?: string | null;
+};
+
+export type MachineRecord = {
+  id: string;
+  organization_id: string;
+  created_by_user_id: number;
+  name: string;
+  hostname: string;
+  key_prefix: string;
+  status: string;
+  last_seen_at?: string | null;
+  created_at?: string | null;
+};
+
+export type MachineCreateResponse = {
+  machine: MachineRecord;
+  machine_api_key: string;
 };
 
 export type ServiceSummary = {
@@ -33,6 +59,9 @@ export type LogRecord = {
   message: string;
   source?: string | null;
   created_at?: string | null;
+  machine_id?: string;
+  machine_name?: string;
+  machine_hostname?: string;
 };
 
 export type IncidentRecord = {
