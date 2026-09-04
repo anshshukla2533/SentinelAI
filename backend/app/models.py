@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Float, DateTime
+from sqlalchemy import Column, ForeignKey, Integer, String, Float, DateTime, Uuid
 from sqlalchemy.sql import func
 
 from .database import Base
@@ -11,6 +11,31 @@ class User(Base):
     email = Column(String, nullable=False, unique=True, index=True)
     hashed_password = Column(String, nullable=False)
     registration_token = Column(String, nullable=False, unique=True, index=True)
+    clerk_user_id = Column(String, nullable=True, unique=True, index=True)
+    default_organization_id = Column(String(255), ForeignKey("organizations.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(String(255), primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Machine(Base):
+    __tablename__ = "machines"
+
+    id = Column(Uuid, primary_key=True, index=True)
+    organization_id = Column("org_id", String(255), ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    hostname = Column(String, nullable=False, index=True)
+    api_key_hash = Column("machine_code_hash", String(128), nullable=False, unique=True, index=True)
+    key_prefix = Column("code_prefix", String(32), nullable=False, index=True)
+    status = Column(String, nullable=False, default="pending")
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -19,6 +44,8 @@ class Metric(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column("org_id", String(255), ForeignKey("organizations.id"), nullable=False, index=True)
+    machine_id = Column(Uuid, ForeignKey("machines.id"), nullable=False, index=True)
     service_name = Column(String, nullable=False)
     cpu = Column(Float, nullable=False)
     memory = Column(Float, nullable=False)
@@ -41,6 +68,8 @@ class Service(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column("org_id", String(255), ForeignKey("organizations.id"), nullable=False, index=True)
+    machine_id = Column(Uuid, ForeignKey("machines.id"), nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
     hostname = Column(String, nullable=True, index=True)
     process_name = Column(String, nullable=True)
@@ -54,6 +83,8 @@ class Incident(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column("org_id", String(255), ForeignKey("organizations.id"), nullable=False, index=True)
+    machine_id = Column(Uuid, ForeignKey("machines.id"), nullable=False, index=True)
     service_id = Column(Integer, ForeignKey("services.id"), nullable=True, index=True)
     service_name = Column(String, nullable=False, index=True)
     title = Column(String, nullable=False)
@@ -68,6 +99,8 @@ class LogEntry(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column("org_id", String(255), ForeignKey("organizations.id"), nullable=False, index=True)
+    machine_id = Column(Uuid, ForeignKey("machines.id"), nullable=False, index=True)
     service_name = Column(String, nullable=False, index=True)
     hostname = Column(String, nullable=True, index=True)
     level = Column(String, nullable=False, index=True)
@@ -81,6 +114,8 @@ class AnalysisReport(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=True, index=True)
     service_name = Column(String, nullable=False, index=True)
     hostname = Column(String, nullable=True, index=True)
     risk_level = Column(String, nullable=False, index=True)
