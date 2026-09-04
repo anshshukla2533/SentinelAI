@@ -5,6 +5,7 @@ import platform
 import shutil
 import socket
 import subprocess
+import sys
 import time
 
 import psutil
@@ -60,7 +61,7 @@ INTERVAL_SECONDS = read_int_setting("SENTINEL_CHECK_INTERVAL", 10, minimum=1)
 REQUEST_TIMEOUT_SECONDS = read_int_setting("SENTINEL_REQUEST_TIMEOUT", 5, minimum=1)
 NOTIFICATION_TARGET = os.getenv("SENTINEL_NOTIFICATION_TARGET")
 ANALYSIS_INTERVAL_SECONDS = read_int_setting("SENTINEL_ANALYSIS_INTERVAL", 60, minimum=10)
-AGENT_TOKEN = os.getenv("SENTINEL_AGENT_TOKEN")
+AGENT_TOKEN = os.getenv("SENTINEL_MACHINE_CODE") or os.getenv("SENTINEL_AGENT_TOKEN")
 WATCH_PROCESSES = [
     process.strip()
     for process in os.getenv("SENTINEL_WATCH_PROCESSES", "").split(",")
@@ -82,11 +83,26 @@ def log(message):
 
 
 def validate_config():
+    global AGENT_TOKEN, REQUEST_HEADERS
+
     if not API_BASE_URL.startswith(("http://", "https://")):
         raise SystemExit("SENTINEL_API_BASE_URL must start with http:// or https://")
 
     if not SERVICE_NAME.strip():
         raise SystemExit("SENTINEL_SERVICE_NAME cannot be empty")
+
+    if not AGENT_TOKEN and sys.stdin.isatty():
+        try:
+            AGENT_TOKEN = input("Paste the machine code from Sentinel dashboard: ").strip()
+        except EOFError:
+            AGENT_TOKEN = ""
+        REQUEST_HEADERS = {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else None
+
+    if not AGENT_TOKEN:
+        raise SystemExit(
+            "SENTINEL_MACHINE_CODE is required. Create or reissue a machine code in the dashboard, "
+            "then set it before starting the agent."
+        )
 
 
 def get_load_average():
