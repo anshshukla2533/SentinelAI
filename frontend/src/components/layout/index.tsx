@@ -1,13 +1,26 @@
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity, Bell, FileText, LayoutDashboard, Monitor, Settings, Search } from 'lucide-react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth';
+import { apiRequest } from '../../api';
 import { BrandMark } from '../common';
+import { ThemeToggle } from '../../theme';
+import type { IncidentRecord, LogRecord, MachineRecord } from '../../types';
+
+type SearchResult = {
+  id: string;
+  title: string;
+  detail: string;
+  to: string;
+};
 
 export function TopBar() {
-  const { user, logout } = useAuth();
+  const { user, logout, getToken } = useAuth();
   const location = useLocation();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
 
   const title = useMemo(() => {
     if (location.pathname.endsWith('/devices')) return 'Devices';
@@ -18,6 +31,44 @@ export function TopBar() {
     return 'Dashboard';
   }, [location.pathname]);
 
+  useEffect(() => {
+    let active = true;
+    const search = async () => {
+      const term = query.trim().toLowerCase();
+      if (term.length < 2) {
+        setResults([]);
+        return;
+      }
+
+      setSearching(true);
+      try {
+        const token = await getToken();
+        const [machines, logs, incidents] = await Promise.all([
+          apiRequest<MachineRecord[]>('/machines', { authToken: token }),
+          apiRequest<LogRecord[]>('/logs?limit=100', { authToken: token }),
+          apiRequest<IncidentRecord[]>('/incidents?limit=100', { authToken: token }),
+        ]);
+        if (!active) return;
+        const matches: SearchResult[] = [
+          ...machines.filter((item) => `${item.name} ${item.hostname}`.toLowerCase().includes(term)).map((item) => ({ id: `machine-${item.id}`, title: item.name, detail: `Device · ${item.hostname}`, to: '/dashboard/devices' })),
+          ...logs.filter((item) => `${item.service_name} ${item.hostname ?? ''} ${item.message}`.toLowerCase().includes(term)).map((item) => ({ id: `log-${item.id}`, title: item.message, detail: `Log · ${item.service_name}`, to: '/dashboard/logs' })),
+          ...incidents.filter((item) => `${item.title} ${item.service_name} ${item.severity}`.toLowerCase().includes(term)).map((item) => ({ id: `incident-${item.id}`, title: item.title, detail: `Alert · ${item.severity}`, to: '/dashboard/alerts' })),
+        ];
+        setResults(matches.slice(0, 8));
+      } catch {
+        if (active) setResults([]);
+      } finally {
+        if (active) setSearching(false);
+      }
+    };
+
+    const timeoutId = window.setTimeout(() => void search(), 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [getToken, query]);
+
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-[#050816]/85 backdrop-blur-xl">
       <div className="flex items-center gap-4 px-4 py-4 sm:px-6 xl:px-7">
@@ -25,9 +76,29 @@ export function TopBar() {
           <div className="text-3xl font-black tracking-tight">{title}</div>
         </div>
         <div className="ml-auto flex flex-1 items-center justify-end gap-3">
-          <div className="hidden w-full max-w-xl items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/55 lg:flex">
+          <div className="relative hidden w-full max-w-xl lg:block">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/55">
             <Search className="h-4 w-4" />
-            Search devices, logs, alerts...
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/45"
+                placeholder="Search devices, logs, alerts..."
+                aria-label="Search devices, logs, alerts"
+              />
+            </div>
+            {query.trim().length >= 2 ? (
+              <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1224] shadow-2xl shadow-black/40">
+                {searching ? <div className="px-4 py-3 text-sm text-white/55">Searching workspace...</div> : null}
+                {!searching && results.length === 0 ? <div className="px-4 py-3 text-sm text-white/55">No matching devices, logs, or alerts.</div> : null}
+                {!searching ? results.map((result) => (
+                  <Link key={result.id} to={result.to} onClick={() => setQuery('')} className="block border-b border-white/5 px-4 py-3 transition last:border-0 hover:bg-white/10">
+                    <div className="truncate text-sm font-semibold text-white">{result.title}</div>
+                    <div className="mt-1 text-xs text-white/45">{result.detail}</div>
+                  </Link>
+                )) : null}
+              </div>
+            ) : null}
           </div>
           <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80">
             <Bell className="h-4 w-4" />
@@ -35,6 +106,7 @@ export function TopBar() {
           <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80">
             <Settings className="h-4 w-4" />
           </button>
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => void logout()}
@@ -113,7 +185,6 @@ export function DashboardLayout() {
         <div className="border-t border-white/10 p-4">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-sm font-semibold">{user?.email ?? 'Admin'}</div>
-            <div className="mt-1 text-xs text-white/50">{user?.registration_token ?? 'Token ready after login'}</div>
           </div>
           <button
             type="button"
