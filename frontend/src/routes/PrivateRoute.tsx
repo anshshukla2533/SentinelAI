@@ -1,19 +1,19 @@
 import type { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import { LoadingScreen } from '../components/common';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { LoadingScreen } from '../components/common';
 
 export function PrivateRoute({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const location = useLocation();
 
-  if (status === 'loading') {
+  if (!authLoaded) {
     return <LoadingScreen label="Checking your session..." />;
   }
 
-  if (status !== 'authenticated') {
-    return <Navigate to="/login" replace />;
+  if (!isSignedIn) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;
 }
-
