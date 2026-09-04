@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.9",
     "@designcodeio/threeui": "^0.3.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.321.0",
