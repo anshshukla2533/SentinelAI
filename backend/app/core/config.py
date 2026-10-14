@@ -27,8 +27,18 @@ SMTP_PASSWORD = os.getenv("SENTINEL_SMTP_PASSWORD")
 SMTP_FROM = os.getenv("SENTINEL_SMTP_FROM", SMTP_USER or "alerts@sentinel-ai.local")
 SMTP_USE_TLS = os.getenv("SENTINEL_SMTP_TLS", "true").lower() != "false"
 
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-   
-]
+def _parse_allowed_origins():
+    raw = os.getenv("SENTINEL_ALLOWED_ORIGINS", "")
+    origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    defaults = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://sentinel-ai-nu-sand.vercel.app",
+    ]
+    for d in defaults:
+        if d not in origins:
+            origins.append(d)
+    return origins
+
+
+ALLOWED_ORIGINS = _parse_allowed_origins()
