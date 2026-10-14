@@ -34,9 +34,7 @@ export function LandingPage() {
           <nav className="hidden items-center gap-7 text-[0.88rem] font-medium text-white/70 lg:flex">
             <a href="#product" className="transition hover:text-white">Product</a>
             <a href="#features" className="transition hover:text-white">Features</a>
-            <a href="#pricing" className="transition hover:text-white">Pricing</a>
             <a href="#resources" className="transition hover:text-white">Resources</a>
-            <a href="#company" className="transition hover:text-white">Company</a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -59,7 +57,7 @@ export function LandingPage() {
       </header>
 
       <main className="relative z-10">
-        <section className="mx-auto grid min-h-[calc(100vh-104px)] max-w-[1600px] gap-16 px-8 pt-6 pb-16 lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:pt-10 lg:pb-24">
+        <section id="product" className="mx-auto grid min-h-[calc(100vh-104px)] max-w-[1600px] gap-16 px-8 pt-6 pb-16 lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:pt-10 lg:pb-24">
           <div className="space-y-10 xl:pr-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/15 px-4 py-2 text-sm font-medium text-violet-100 shadow-lg shadow-violet-950/20">
               <Sparkles className="h-4 w-4" />
@@ -80,7 +78,7 @@ export function LandingPage() {
                 to="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-xl shadow-violet-500/30 transition hover:translate-y-[-1px]"
               >
-                Start Free Trial
+                Get Started
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -140,10 +138,10 @@ export function LandingPage() {
 
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {[
-                      ['128', 'Online Devices'],
-                      ['6', 'Offline Devices'],
-                      ['3', 'Critical Alerts'],
-                      ['42%', 'Anomaly CPU'],
+                      ['--', 'Online Devices'],
+                      ['--', 'Connected Devices'],
+                      ['--', 'Critical Alerts'],
+                      ['--', 'Average CPU'],
                     ].map(([value, label], index) => (
                       <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <div className="text-2xl font-black text-white">{value}</div>
@@ -206,7 +204,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="bg-white px-8 py-16">
+        <section id="features" className="bg-white px-8 py-16">
           <div className="mx-auto max-w-[1600px] text-center">
             <h2 className="text-4xl font-black tracking-tight text-slate-900 md:text-5xl">
               Everything You Need to Secure &amp; Monitor
@@ -229,27 +227,54 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="pricing" className="bg-white px-8 pb-16 pt-4">
-          <div className="mx-auto max-w-[1600px] rounded-[2rem] bg-[#060816] px-10 py-12 shadow-[0_20px_60px_rgba(17,24,39,0.25)]">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="text-3xl font-black text-white">Ready to secure your infrastructure?</div>
-                <p className="mt-2 max-w-2xl text-white/65">Join thousands of security teams using Sentinel AI to stay ahead of threats.</p>
-              </div>
-              <div className="flex gap-3">
-                <Link to="/signup" className="inline-flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-6 text-sm font-semibold text-white">
-                  Start Free Trial
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link to="/login" className="inline-flex h-12 items-center gap-2 rounded-full border border-violet-400/60 px-6 text-sm font-semibold text-white">
-                  Talk to Sales
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
+        <section id="resources" className="bg-slate-50 px-8 py-16">
+          <div className="mx-auto max-w-[1600px]">
+            <div className="max-w-2xl">
+              <div className="text-xs font-bold uppercase tracking-[0.25em] text-blue-600">Resources</div>
+              <h2 className="mt-3 text-4xl font-black tracking-tight text-slate-900">Build with Sentinel AI</h2>
+              <p className="mt-4 text-lg leading-8 text-slate-600">Read the platform documentation, connect a machine agent, and understand the telemetry that powers your workspace.</p>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/docs" className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-600">Read documentation <ArrowRight className="h-4 w-4" /></Link>
+              <Link to="/login" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-blue-400 hover:text-blue-700">Open workspace <ArrowRight className="h-4 w-4" /></Link>
             </div>
           </div>
         </section>
+
       </main>
+      <footer className="landing-footer bg-[#0b142b] px-8 py-14 text-white">
+        <div className="mx-auto max-w-[1600px]">
+          <div className="grid gap-10 md:grid-cols-[1.4fr_0.8fr_0.8fr]">
+            <div>
+              <Link to="/" className="flex items-center gap-3">
+                <BrandMark compact dark />
+                <span className="text-2xl font-black">Sentinel AI</span>
+              </Link>
+              <p className="mt-5 max-w-sm text-sm leading-7 text-slate-300/70">Real-time infrastructure monitoring, telemetry, logs, and incident intelligence in one workspace.</p>
+            </div>
+            <div>
+              <div className="text-sm font-bold uppercase tracking-[0.2em] text-white/80">Explore</div>
+              <div className="mt-5 space-y-3 text-sm text-slate-300/75">
+                <a href="#product" className="block transition hover:text-white">Product</a>
+                <a href="#features" className="block transition hover:text-white">Features</a>
+                <a href="#resources" className="block transition hover:text-white">Resources</a>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm font-bold uppercase tracking-[0.2em] text-white/80">Workspace</div>
+              <div className="mt-5 space-y-3 text-sm text-slate-300/75">
+                <Link to="/docs" className="block transition hover:text-white">Documentation</Link>
+                <Link to="/login" className="block transition hover:text-white">Log in</Link>
+                <Link to="/signup" className="block transition hover:text-white">Get started</Link>
+              </div>
+            </div>
+          </div>
+          <div className="mt-12 flex flex-col gap-3 border-t border-white/10 pt-6 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+            <span>© 2026 Sentinel AI. All rights reserved.</span>
+            <span>Infrastructure visibility for every team.</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

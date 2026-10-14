@@ -4,7 +4,7 @@ import { ArrowRight, Check, Copy, Download, Gauge, Monitor, Plus, Shield, Sparkl
 import { Link } from 'react-router-dom';
 import { API_BASE_URL } from '../../api';
 import { useAuth } from '../../auth';
-import type { IncidentRecord, LogRecord, MetricRecord, ServiceSummary } from '../../types';
+import type { MetricRecord, ServiceSummary } from '../../types';
 
 export function LoadingScreen({ label }: { label: string }) {
   return (
@@ -346,10 +346,6 @@ export function averageMetric(services: ServiceSummary[], key: keyof MetricRecor
   return average(values);
 }
 
-export function randomRange(min: number, max: number) {
-  return Math.round(min + (max - min) * 0.5);
-}
-
 export function relativeTime(value?: string | null) {
   if (!value) return 'just now';
   const date = new Date(value);
@@ -507,27 +503,3 @@ export function FlowCard() {
   );
 }
 
-export function demoServices(): ServiceSummary[] {
-  return [
-    { id: 1, name: 'SERVER-01', hostname: 'server-1', status: 'healthy', open_incidents_count: 0, latest_metric: { id: 1, service_name: 'SERVER-01', cpu: 34, memory: 61, disk: 45, operating_system: 'Ubuntu 24.04 LTS' } as MetricRecord },
-    { id: 2, name: 'DB-SERVER-03', hostname: 'db-server-03', status: 'warning', open_incidents_count: 2, latest_metric: { id: 2, service_name: 'DB-SERVER-03', cpu: 72, memory: 78, disk: 81, operating_system: 'Ubuntu 22.04 LTS' } as MetricRecord },
-    { id: 3, name: 'WEB-SERVER-05', hostname: 'web-server-05', status: 'healthy', open_incidents_count: 0, latest_metric: { id: 3, service_name: 'WEB-SERVER-05', cpu: 28, memory: 53, disk: 40, operating_system: 'Ubuntu 24.04 LTS' } as MetricRecord },
-    { id: 4, name: 'APP-SERVER-04', hostname: 'app-server-04', status: 'critical', open_incidents_count: 3, latest_metric: { id: 4, service_name: 'APP-SERVER-04', cpu: 64, memory: 82, disk: 67, operating_system: 'Windows Server 2019' } as MetricRecord },
-  ];
-}
-
-export function demoLogs(): LogRecord[] {
-  return [
-    { id: 1, service_name: 'SERVER-01', level: 'info', message: 'System boot completed successfully', created_at: new Date().toISOString() },
-    { id: 2, service_name: 'SERVER-04', level: 'warning', message: 'High memory usage detected (82%)', created_at: new Date().toISOString() },
-    { id: 3, service_name: 'SERVER-02', level: 'critical', message: 'Failed SSH login attempt from 192.168.1.233', created_at: new Date().toISOString() },
-  ];
-}
-
-export function demoIncidents(): IncidentRecord[] {
-  return [
-    { id: 1, service_name: 'SERVER-02', title: 'High CPU Usage', severity: 'critical', status: 'active' },
-    { id: 2, service_name: 'DB-SERVER-03', title: 'Disk Space Low', severity: 'warning', status: 'investigating' },
-    { id: 3, service_name: 'APP-SERVER-04', title: 'Memory Usage High', severity: 'warning', status: 'resolved' },
-  ];
-}

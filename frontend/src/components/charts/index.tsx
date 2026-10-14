@@ -86,7 +86,7 @@ export function BarsChart({ accent }: { accent?: string }) {
 }
 
 export function DonutChart({ total, label }: { total: number; label?: string }) {
-  const ring = Math.max(134, total);
+  const ring = total;
   return (
     <div className="flex flex-col items-center gap-4">
       <div

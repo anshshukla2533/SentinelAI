@@ -1,5 +1,5 @@
-import { Card, EmptyStateMini, KeyValueRow, SectionCard, demoServices, average } from '../../components/common';
-import { BarsChart, DonutChart, MultiLineChart } from '../../components/charts';
+import { Card, EmptyStateMini, KeyValueRow, SectionCard, average } from '../../components/common';
+import { DonutChart } from '../../components/charts';
 import { DeviceUsageList } from '../../components/device';
 import { MetricTile } from '../../components/monitoring';
 import { AlertRow } from '../../components/alerts';
@@ -7,26 +7,29 @@ import { useWorkspaceData } from '../../hooks/useWorkspaceData';
 
 export function MonitoringPage() {
   const data = useWorkspaceData();
-  const services = data.services.length > 0 ? data.services : demoServices();
-  const cpuSeries = services.map((service) => service.latest_metric?.cpu ?? 42);
-  const memorySeries = services.map((service) => service.latest_metric?.memory ?? 50);
-  const diskSeries = services.map((service) => service.latest_metric?.disk ?? 61);
+  const services = data.services;
+  const cpuSeries = data.metrics.map((metric) => metric.cpu);
+  const memorySeries = data.metrics.map((metric) => metric.memory);
+  const diskSeries = data.metrics.map((metric) => metric.disk).filter((value): value is number => typeof value === 'number');
+  const networkIn = data.metrics.reduce((total, metric) => total + (metric.network_recv ?? 0), 0);
+  const networkOut = data.metrics.reduce((total, metric) => total + (metric.network_sent ?? 0), 0);
+  const loadAverage = data.metrics.length ? average(data.metrics.map((metric) => metric.load_average ?? 0)) : null;
 
   return (
     <div className="space-y-5">
       <SectionCard title="Monitoring" subtitle="Real-time system metrics and performance monitoring">
         <div className="grid gap-4 xl:grid-cols-6">
-          <MetricTile label="Average CPU" value={`${Math.round(average(cpuSeries))}%`} tone="violet" sparkline={cpuSeries} />
-          <MetricTile label="Average Memory" value={`${Math.round(average(memorySeries))}%`} tone="cyan" sparkline={memorySeries} />
-          <MetricTile label="Average Disk" value={`${Math.round(average(diskSeries))}%`} tone="amber" sparkline={diskSeries} />
-          <MetricTile label="Total Network In" value="1.42 TB" tone="emerald" sparkline={[20, 32, 28, 40, 46, 60, 58]} />
-          <MetricTile label="Total Network Out" value="892 GB" tone="violet" sparkline={[14, 24, 18, 34, 46, 38, 42]} />
-          <MetricTile label="Avg Load Average" value="1.28" tone="cyan" sparkline={[12, 18, 24, 22, 28, 31, 29]} />
+          <MetricTile label="Average CPU" value={cpuSeries.length ? `${Math.round(average(cpuSeries))}%` : '--'} tone="violet" sparkline={cpuSeries} />
+          <MetricTile label="Average Memory" value={memorySeries.length ? `${Math.round(average(memorySeries))}%` : '--'} tone="cyan" sparkline={memorySeries} />
+          <MetricTile label="Average Disk" value={diskSeries.length ? `${Math.round(average(diskSeries))}%` : '--'} tone="amber" sparkline={diskSeries} />
+          <MetricTile label="Total Network In" value={data.metrics.length ? `${Math.round(networkIn / 1024 / 1024)} MB` : '--'} tone="emerald" />
+          <MetricTile label="Total Network Out" value={data.metrics.length ? `${Math.round(networkOut / 1024 / 1024)} MB` : '--'} tone="violet" />
+          <MetricTile label="Avg Load Average" value={loadAverage === null ? '--' : loadAverage.toFixed(2)} tone="cyan" />
         </div>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_0.85fr_0.8fr]">
-          <Card title="CPU utilization (%)" subtitle="Multi-device trend">
-            <MultiLineChart />
+          <Card title="CPU utilization (%)" subtitle="Latest received samples">
+            {cpuSeries.length ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{data.metrics.slice(0, 8).map((metric) => <div key={metric.id} className="rounded-xl border border-white/10 bg-white/5 p-3"><div className="text-xs text-white/50">{metric.service_name}</div><div className="mt-2 text-xl font-bold">{metric.cpu}%</div></div>)}</div> : <EmptyStateMini text="No CPU telemetry received yet." />}
           </Card>
           <Card title="System overview" subtitle="Workspace health summary">
             <div className="space-y-3">
@@ -42,7 +45,7 @@ export function MonitoringPage() {
             </div>
           </Card>
           <Card title="Resource Distribution" subtitle="Overall fleet composition">
-            <DonutChart total={services.length || 134} />
+            <DonutChart total={services.length} />
           </Card>
         </div>
 

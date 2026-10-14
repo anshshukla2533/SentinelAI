@@ -21,7 +21,7 @@ export function MetricTile({
   };
 
   return (
-    <div className={`rounded-[1.5rem] border border-white/10 bg-gradient-to-br ${toneStyles[tone]} p-4`}>
+    <div className={`metric-tile rounded-[1.5rem] border border-white/10 bg-gradient-to-br ${toneStyles[tone]} p-4`}>
       <div className="text-xs uppercase tracking-[0.25em] text-white/55">{label}</div>
       <div className="mt-2 text-3xl font-black">{value}</div>
       {sparkline ? <Sparkline values={sparkline} /> : null}

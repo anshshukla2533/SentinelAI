@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Bell, FileText, LayoutDashboard, Monitor, Settings, Search } from 'lucide-react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Activity, Bell, FileText, LayoutDashboard, Monitor, PlusCircle, Settings, Search } from 'lucide-react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { apiRequest } from '../../api';
 import { BrandMark } from '../common';
@@ -18,6 +18,7 @@ type SearchResult = {
 export function TopBar() {
   const { user, logout, getToken } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -28,6 +29,7 @@ export function TopBar() {
     if (location.pathname.endsWith('/logs')) return 'Logs';
     if (location.pathname.endsWith('/alerts')) return 'Alerts';
     if (location.pathname.endsWith('/settings')) return 'Settings';
+    if (location.pathname.endsWith('/add-system')) return 'Add System';
     return 'Dashboard';
   }, [location.pathname]);
 
@@ -109,7 +111,10 @@ export function TopBar() {
           <ThemeToggle />
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={async () => {
+              await logout();
+              navigate('/', { replace: true });
+            }}
             className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-black">
@@ -123,6 +128,7 @@ export function TopBar() {
       <div className="xl:hidden">
         <div className="flex gap-2 overflow-x-auto px-4 pb-4">
           <MobileTab to="/dashboard" label="Dashboard" />
+          <MobileTab to="/dashboard/add-system" label="Add System" />
           <MobileTab to="/dashboard/devices" label="Devices" />
           <MobileTab to="/dashboard/monitoring" label="Monitoring" />
           <MobileTab to="/dashboard/logs" label="Logs" />
@@ -162,6 +168,7 @@ export function SidebarLink({ to, icon, label, end }: { to: string; icon: ReactN
 
 export function DashboardLayout() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-[#050816] text-white">
@@ -176,6 +183,7 @@ export function DashboardLayout() {
 
         <div className="flex-1 px-3 py-4">
           <SidebarLink to="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" end />
+          <SidebarLink to="/dashboard/add-system" icon={<PlusCircle className="h-4 w-4" />} label="Add System" />
           <SidebarLink to="/dashboard/devices" icon={<Monitor className="h-4 w-4" />} label="Devices" />
           <SidebarLink to="/dashboard/monitoring" icon={<Activity className="h-4 w-4" />} label="Monitoring" />
           <SidebarLink to="/dashboard/logs" icon={<FileText className="h-4 w-4" />} label="Logs" />
@@ -188,7 +196,10 @@ export function DashboardLayout() {
           </div>
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={async () => {
+              await logout();
+              navigate('/', { replace: true });
+            }}
             className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-white transition hover:bg-white/10"
           >
             Sign out
